@@ -169,7 +169,7 @@ export class LLMClient {
   private async callOllama(
     prompt: string,
     options: LLMRequestConfig,
-    signal?: AbortSignal
+    signal: AbortSignal
   ): Promise<LLMResponse> {
     const modelName = options.model || ENV.EDGE_LLM_MODEL;
     console.log(`[LLMClient] Calling Local Ollama [${modelName}] at ${ENV.EDGE_LLM_ENDPOINT}`);
