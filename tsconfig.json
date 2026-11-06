@@ -1,0 +1,21 @@
+{
+  // `npm run build` only type-checks the AI code (noEmit): nothing is compiled to dist/.
+  // MedFlow-Backend compiles the AI files it imports itself, with its own tsconfig.
+  // The strict options below match MedFlow-Backend/tsconfig.json, so code that passes
+  // here also passes when Backend compiles it.
+  "compilerOptions": {
+    "noEmit": true,
+
+    "module": "nodenext",
+    "target": "esnext",
+    "types": ["node"],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "isolatedModules": true,
+    "skipLibCheck": true
+  },
+  "include": ["core/**/*.ts", "cloud/**/*.ts", "edge/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["node_modules", "edge/extraction_service"]
+}

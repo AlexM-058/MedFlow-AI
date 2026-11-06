@@ -1,0 +1,12 @@
+# What is NOT sent to `docker build`. Most important: .env (GEMINI_API_KEY) never goes into the image.
+.env
+.env.*
+!.env.example
+node_modules
+dist
+*.log
+.git
+# The image contains only core/ and cloud/. The Python extraction service (with its
+# .venv and fixtures) and the scripts are not part of it.
+edge
+scripts
