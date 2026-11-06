@@ -1,0 +1,16 @@
+# MedFlow AI Dependencies
+
+# Core AI and SDKs
+google-generativeai==0.8.3
+python-dotenv==1.0.1
+
+# Data Processing
+numpy==1.26.4
+pandas==2.2.2
+
+# Local AI (Optional - if running python-based llama.cpp/ollama wrappers)
+# ollama==0.3.1
+
+# Testing & Validation
+pytest==8.2.0
+pydantic==2.7.1
