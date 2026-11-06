@@ -104,7 +104,10 @@ if (-not (Test-Az containerapp show --name $AppName --resource-group $ResourceGr
     --secrets "gemini-api-key=$GeminiKey" --env-vars "GEMINI_API_KEY=secretref:gemini-api-key" -o none
 } else {
   Invoke-Az containerapp secret set --name $AppName --resource-group $ResourceGroup --secrets "gemini-api-key=$GeminiKey" -o none
-  Invoke-Az containerapp update --name $AppName --resource-group $ResourceGroup --image $Image -o none
+  # --revision-suffix: forteaza mereu o versiune (revizie) NOUA. Altfel, un secret schimbat poate sa nu
+  # ajunga in container, iar o revizie actualizata "pe loc" poate ramane blocata (ActivationFailed).
+  Invoke-Az containerapp update --name $AppName --resource-group $ResourceGroup --image $Image `
+    --revision-suffix ("v" + (Get-Date -Format "MMddHHmmss")) -o none
 }
 
 $Fqdn = az containerapp show --name $AppName --resource-group $ResourceGroup --query properties.configuration.ingress.fqdn -o tsv
