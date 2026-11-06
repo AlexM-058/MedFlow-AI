@@ -1,8 +1,10 @@
 """Pasul 1: din octeții fișierului obținem TEXTUL documentului.
 
-  JPG / PNG          -> MedGemma transcrie textul din imagine
+  JPG / PNG          -> OCR (ocr.image_to_text) citește textul din imagine
   PDF cu text        -> PyMuPDF citește textul direct din fișier (fără AI)
-  PDF scanat         -> PyMuPDF face din pagină o imagine PNG -> MedGemma o transcrie
+  PDF scanat         -> PyMuPDF face din pagină o imagine PNG -> OCR o citește
+
+Cine face OCR-ul (azi MedGemma) se alege în ocr.py, cu variabila de mediu OCR_ENGINE.
 """
 
 from dataclasses import dataclass, field
@@ -10,10 +12,11 @@ from typing import Literal
 
 import pymupdf
 
-import medgemma_client
+import ocr
 from errors import ExtractionError
 
-# Câte pagini citim. O pagină scanată costă ~4 s de transcriere; Backend-ul așteaptă 60 s.
+# Câte pagini citim. O pagină scanată costă ~4 s de transcriere, uneori mult mai mult;
+# toată cererea are un buget de timp (time_budget.py).
 MAX_PAGES = 3
 
 # Sub atâtea caractere, o pagină PDF e considerată „fără text” (scanată).
@@ -22,12 +25,6 @@ MIN_TEXT_CHARS = 20
 # Cât text trimitem mai departe la extragere (~2700 tokeni), ca să încapă în CONTEXT_TOKENS
 # împreună cu instrucțiunile și cu răspunsul.
 MAX_TEXT_CHARS = 8000
-
-TRANSCRIBE_PROMPT = (
-    "Transcrie EXACT tot textul din imagine, rând cu rând, în limba în care este scris. "
-    "Nu adăuga nimic, nu corecta greșelile, nu traduce, nu explica. "
-    "Scrie doar textul din imagine."
-)
 
 # Primii octeți ai fiecărui format („magic bytes”), la fel ca în MedFlow-Backend/src/fileType.ts.
 SIGNATURES = {
@@ -52,7 +49,8 @@ def detect_type(data: bytes) -> str | None:
     return None
 
 
-def read_document(data: bytes, content_type: str) -> DocumentText:
+def read_document(data: bytes, content_type: str, deadline: float | None = None) -> DocumentText:
+    """deadline = termenul limită al cererii (vezi time_budget.py); None = fără buget."""
     real_type = detect_type(data)
     if real_type is None:
         raise ExtractionError(415, "Fișierul nu este un JPG, PNG sau PDF valid")
@@ -60,9 +58,9 @@ def read_document(data: bytes, content_type: str) -> DocumentText:
         raise ExtractionError(415, f"Content-Type este {content_type}, dar fișierul este {real_type}")
 
     if real_type == "application/pdf":
-        document = read_pdf(data)
+        document = read_pdf(data, deadline)
     else:
-        text, warnings = transcribe_image(data)
+        text, warnings = ocr.image_to_text(data, deadline)
         document = DocumentText(text=text, input_kind="image", pages=1, warnings=warnings)
 
     document.text = clean_text(document.text).strip()
@@ -83,15 +81,7 @@ def clean_text(text: str) -> str:
     return text.replace("\u00a0", " ").replace("\u00ad", "-")
 
 
-def transcribe_image(image: bytes) -> tuple[str, list[str]]:
-    text, truncated = medgemma_client.generate(TRANSCRIBE_PROMPT, image=image, max_tokens=2048)
-    warnings = []
-    if truncated:
-        warnings.append("Transcrierea imaginii a fost întreruptă: o parte din text poate lipsi.")
-    return text, warnings
-
-
-def read_pdf(data: bytes) -> DocumentText:
+def read_pdf(data: bytes, deadline: float | None = None) -> DocumentText:
     try:
         pdf = pymupdf.open(stream=data, filetype="pdf")
     except Exception:
@@ -112,10 +102,10 @@ def read_pdf(data: bytes) -> DocumentText:
         if len(page_text) >= MIN_TEXT_CHARS:
             texts.append(page_text)
         else:
-            # Pagina nu are text: e o poză. O transformăm în PNG și o dăm lui MedGemma.
+            # Pagina nu are text: e o poză. O transformăm în PNG și o dăm motorului OCR.
             any_scanned = True
             png = page.get_pixmap(dpi=150).tobytes("png")
-            page_text, page_warnings = transcribe_image(png)
+            page_text, page_warnings = ocr.image_to_text(png, deadline)
             texts.append(page_text)
             warnings.extend(page_warnings)
 

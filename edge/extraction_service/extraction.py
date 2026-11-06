@@ -31,9 +31,12 @@ DOCUMENT:
 {document}"""
 
 
-def extract_fields(document_text: str) -> ModelExtraction:
+def extract_fields(document_text: str, deadline: float | None = None) -> ModelExtraction:
+    """deadline = termenul limită al cererii (vezi time_budget.py); None = fără buget."""
     prompt = EXTRACTION_PROMPT.replace("{document}", document_text)
-    raw, truncated = medgemma_client.generate(prompt, json_schema=EXTRACTION_SCHEMA, max_tokens=2048)
+    raw, truncated = medgemma_client.generate(
+        prompt, json_schema=EXTRACTION_SCHEMA, max_tokens=2048, deadline=deadline
+    )
     if truncated:
         raise ExtractionError(502, "Răspunsul MedGemma a fost întrerupt înainte să se termine")
     try:
