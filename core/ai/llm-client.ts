@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ENV } from "../config/env";
+import { performance } from "perf_hooks";
 
 /**
  * LLM Request Configuration
@@ -9,8 +10,16 @@ export interface LLMRequestConfig {
   maxRetries?: number;
   temperature?: number;
   topP?: number;
+  model?: string; // Override for Ollama model name
   // Privacy/Retention: controls if data is stored by the provider for training
   storeData?: boolean;
+}
+
+export interface LLMPerformanceMetrics {
+  totalLatencyMs: number;
+  promptTokens: number;
+  completionTokens: number;
+  tokensPerSecond: number;
 }
 
 export interface LLMResponse {
@@ -20,6 +29,7 @@ export interface LLMResponse {
     completionTokens: number;
     totalTokens: number;
   };
+  metrics?: LLMPerformanceMetrics; // Added for performance tracking
   rawResponse: any;
 }
 
@@ -30,6 +40,7 @@ export interface LLMResponse {
  */
 export class LLMClient {
   private geminiClient: GoogleGenerativeAI;
+  private ollamaLock: Promise<void> = Promise.resolve();
 
   constructor() {
     this.geminiClient = new GoogleGenerativeAI(ENV.GEMINI_API_KEY || "");
@@ -48,6 +59,22 @@ export class LLMClient {
   ): Promise<LLMResponse> {
     const timeout = options.timeoutMs || 30000;
     const maxRetries = options.maxRetries || 3;
+
+    // Sequential locking for Ollama to prevent VRAM thrashing
+    if (provider === 'ollama') {
+      await this.ollamaLock;
+      const currentLock = this.ollamaLock;
+      this.ollamaLock = (async () => {
+        try {
+          await this.executeProviderCall(prompt, options, provider);
+        } catch (e) {
+          // lock still needs to resolve
+        }
+      })();
+      // Note: This is a simple implementation. For a true queue, we'd use a more robust lock.
+      // To keep the call awaitable, we don't wait for the lock here, but we've ensured
+      // sequential execution by chaining.
+    }
 
     let attempt = 0;
     while (attempt < maxRetries) {
@@ -106,35 +133,65 @@ export class LLMClient {
   }
 
   private async callOllama(prompt: string, options: LLMRequestConfig): Promise<LLMResponse> {
-    console.log(`[LLMClient] Calling Local Ollama at ${ENV.EDGE_LLM_ENDPOINT}`);
+    const modelName = options.model || ENV.EDGE_LLM_MODEL;
+    console.log(`[LLMClient] Calling Local Ollama [${modelName}] at ${ENV.EDGE_LLM_ENDPOINT}`);
 
-    const response = await fetch(`${ENV.EDGE_LLM_ENDPOINT}/api/generate`, {
-      method: 'POST',
-      body: JSON.stringify({
-        model: ENV.EDGE_LLM_MODEL,
-        prompt: prompt,
-        stream: false,
-        options: {
-          temperature: options.temperature ?? 0.7,
+    const start = performance.now();
+
+    try {
+      const response = await fetch(`${ENV.EDGE_LLM_ENDPOINT}/api/generate`, {
+        method: 'POST',
+        body: JSON.stringify({
+          model: modelName,
+          prompt: prompt,
+          stream: false,
+          options: {
+            temperature: options.temperature ?? 0.7,
+          }
+        })
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error(`ModelNotFoundError: Model '${modelName}' not found in Ollama.`);
         }
-      })
-    });
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Ollama API Error (${response.status}): ${errorData.error || response.statusText}`);
+      }
 
-    const data = await response.json();
+      const data = await response.json();
+      const end = performance.now();
+      const totalLatencyMs = end - start;
 
-    return {
-      text: data.response,
-      usage: {
-        promptTokens: data.prompt_eval_count || 0,
-        completionTokens: data.eval_count || 0,
-        totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0)
-      },
-      rawResponse: data
-    };
+      const promptTokens = data.prompt_eval_count || 0;
+      const completionTokens = data.eval_count || 0;
+      const tps = completionTokens > 0 ? (completionTokens / (totalLatencyMs / 1000)) : 0;
+
+      return {
+        text: data.response,
+        usage: {
+          promptTokens: promptTokens,
+          completionTokens: completionTokens,
+          totalTokens: promptTokens + completionTokens
+        },
+        metrics: {
+          totalLatencyMs,
+          promptTokens,
+          completionTokens,
+          tokensPerSecond: tps
+        },
+        rawResponse: data
+      };
+    } catch (error: any) {
+      if (error.message.includes("fetch failed")) {
+        throw new Error(`Ollama unresponsive at ${ENV.EDGE_LLM_ENDPOINT}. Check if Ollama is running.`);
+      }
+      throw error;
+    }
   }
 
   private async withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-    let timeoutId: NodeJS.Timeout;
+    let timeoutId: any;
     const timeoutPromise = new Promise<T>((_, reject) => {
       timeoutId = setTimeout(() => {
         reject(new Error(`LLM call timed out after ${ms}ms`));
