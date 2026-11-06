@@ -65,17 +65,27 @@ export class DoctorOrchestrator {
     const state = await this.getState(sessionId);
 
     // 2. Privacy Scrubbing (Input)
+    // EVERY text that goes into the prompt is scrubbed: the case summary, the documents
+    // context and the patient's answer (free text, the most likely to contain an email or phone).
     // Fail-closed: If scrubbing fails, we do not proceed to the LLM.
     let scrubbedSummary;
+    let scrubbedDocuments: string | undefined;
+    let scrubbedResponse: string | undefined;
     try {
       scrubbedSummary = await privacyGateway.scrubObject(caseSummary, sessionId);
+      if (documentsContext !== undefined) {
+        scrubbedDocuments = await privacyGateway.scrub(documentsContext, sessionId);
+      }
+      if (patientResponse !== undefined) {
+        scrubbedResponse = await privacyGateway.scrub(patientResponse, sessionId);
+      }
     } catch (error) {
       console.error(`[DoctorOrchestrator] Privacy scrubbing failed: ${error}`);
       throw new Error("Security violation: Failed to scrub PHI/PII before AI processing.");
     }
 
     // 3. Prompt Selection & Templating
-    const prompt = this.buildPrompt(state, scrubbedSummary, documentsContext, patientResponse);
+    const prompt = this.buildPrompt(state, scrubbedSummary, scrubbedDocuments, scrubbedResponse);
 
     // 4. LLM Interaction
     // storeData: false ensures we request that the provider does not use this for training
@@ -99,7 +109,8 @@ export class DoctorOrchestrator {
         lastAnalysis: analysis
       });
 
-      const question = this.generateClarificationQuestion(analysis.missingInformation);
+      const language: 'ro' | 'en' = caseSummary.metadata?.language === 'en' ? 'en' : 'ro';
+      const question = this.generateClarificationQuestion(analysis.missingInformation, language);
       return {
         status: 'CLARIFICATION_REQUIRED',
         data: question
@@ -144,10 +155,15 @@ export class DoctorOrchestrator {
     return JSON.parse(jsonMatch[0]);
   }
 
-  private generateClarificationQuestion(missingInfo: string[]): string {
+  private generateClarificationQuestion(missingInfo: string[], language: 'ro' | 'en'): string {
     // In a production system, this might be another LLM call to make the question more natural.
-    // For MVP, we provide a structured request for the missing data.
-    return `The AI requires more information to provide an accurate analysis. Please clarify the following: ${missingInfo.join('; ')}`;
+    // For MVP, we provide a structured request for the missing data, in the case's language.
+    // Romanian is the default: MedFlow's primary language. The listed items come from the LLM,
+    // whose Romanian prompt asks it to write everything in Romanian (cloud/prompts/templates.ts).
+    if (language === 'en') {
+      return `The AI requires more information to provide an accurate analysis. Please clarify the following: ${missingInfo.join('; ')}`;
+    }
+    return `Pentru o analiză corectă sunt necesare mai multe informații. Vă rugăm să clarificați următoarele: ${missingInfo.join('; ')}`;
   }
 
   /**

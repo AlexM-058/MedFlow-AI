@@ -46,18 +46,48 @@ To compare the performance (latency and TPS) of the local models on your hardwar
 npx tsx scripts/benchmark-models.ts
 ```
 
-### Running the AI Orchestrator
-The system uses a stateful orchestrator to handle patient clarifications. To test the flow:
-1. Ensure Ollama is running.
-2. Run the application via the main entry point (as configured in your environment).
+### Running the AI cloud service (HTTP)
+`cloud/server.ts` exposes the Doctor AI orchestrator over HTTP, so MedFlow-Backend calls it
+instead of importing AI files (each repository builds and deploys on its own, e.g. on Azure).
+
+```bash
+npm run dev        # http://127.0.0.1:8091/health  (HOST/PORT from .env; needs GEMINI_API_KEY)
+npm start          # same server without watch (node --import tsx cloud/server.ts)
+npm run build      # type-check only (tsc, no output files)
+```
+
+Docker (e.g. Azure Container Apps), image with only `core/`, `cloud/` and production
+dependencies (`tsx` runs the `.ts` files); `.dockerignore` keeps `.env` out of the image:
+
+```bash
+docker build -t medflow-ai .
+docker run --rm --env-file .env -e HOST=0.0.0.0 -p 8091:8091 medflow-ai
+```
+
+| Method and path | Body | Success |
+| --- | --- | --- |
+| `GET /health` | none | `200` + `{"status":"ok","service":"medflow-ai-cloud"}` |
+| `POST /analysis` | `{"caseId", "caseSummary": CaseSummary, "documentsContext"?, "patientResponse"?, "state": object \| null}` | `200` + `{"result": {"status": "FINAL" \| "CLARIFICATION_REQUIRED", "data"}, "state": object \| null, "model": "gemini-3-flash-preview"}` |
+
+- `caseSummary`, `documentsContext` **and** `patientResponse` all go through `PrivacyGateway` before the
+  prompt is built (fail-closed). The clarification question is in the case's language (Romanian by
+  default), and the Romanian prompts ask Gemini to write every text, including `missingInformation`, in Romanian.
+
+- `state` is the value of `cases.doctor_orchestration_state` (Database migration 003). Backend
+  sends the current value and saves the `state` it gets back. **The service has no database access.**
+- Backend does authorization and the full `CaseSummary` validation before calling; the service only
+  checks the basic shape. Errors are JSON `{"error": "..."}`: `400` invalid body or JSON, `413` body
+  over 1 MB, `500` privacy scrubbing or Gemini failure.
+- The service listens on `127.0.0.1` by default. On Azure it must be reachable only from Backend
+  (internal ingress), never from the internet.
 
 `DoctorOrchestrator` (`cloud/orchestration/doctor-orchestrator.ts`) does not talk to a
 database itself. Its constructor takes an `OrchestrationStateStore` with two functions,
 `load(sessionId)` and `save(state)`, and keeps nothing in memory between calls.
-MedFlow-Backend passes a store that uses the `cases.doctor_orchestration_state` column
-(Database migration 003) and uses the case id as `sessionId`; the endpoint is
-`POST /cases/{id}/analysis`. Contract change: `new DoctorOrchestrator()` without a
-store, and the old `doctorOrchestrator` singleton export, no longer exist.
+`cloud/server.ts` gives it a store that lives for one request: `load` returns the `state`
+sent by MedFlow-Backend and `save` keeps the new state to send back. MedFlow-Backend no
+longer imports AI files; it calls `POST /analysis` from its `POST /cases/{id}/analysis`
+route and stores `state` in `cases.doctor_orchestration_state` (Database migration 003).
 
 ## 🛡️ Safety & Privacy
 - **Privacy First**: All data is scrubbed via the `PrivacyGateway` before being sent to cloud LLMs.

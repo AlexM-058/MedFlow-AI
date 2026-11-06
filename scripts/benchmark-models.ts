@@ -2,6 +2,16 @@ import { llmClient } from "../core/ai/llm-client";
 import { ENV } from "../core/config/env";
 import { execSync } from "child_process";
 
+/** One row of the results table: one model on one prompt. */
+interface BenchmarkResult {
+  model: string;
+  prompt: number;
+  latency: number | null; // null = the call failed
+  tps: number;
+  completionTokens: number;
+  error?: string;
+}
+
 /**
  * Benchmarking Utility for Ollama Models
  * Tests MedGemma and Gemma sequentially and measures performance.
@@ -20,7 +30,7 @@ async function benchmark() {
     "What are the key diagnostic criteria for Systemic Lupus Erythematosus (SLE)?",
   ];
 
-  const results = [];
+  const results: BenchmarkResult[] = [];
 
   console.log("🚀 Starting Ollama Model Benchmark...");
   console.log(`Testing on: ${ENV.EDGE_LLM_ENDPOINT}\n`);
@@ -38,6 +48,7 @@ async function benchmark() {
 
     for (let i = 0; i < prompts.length; i++) {
       const prompt = prompts[i];
+      if (prompt === undefined) continue; // never happens (i < prompts.length), but TypeScript can't know that
       console.log(`Prompt ${i + 1}/${prompts.length}...`);
 
       try {
@@ -80,7 +91,8 @@ async function benchmark() {
   // Summary analysis
   const summary = models.map(m => {
     const modelResults = results.filter(r => r.model === m.label && r.latency !== null);
-    const avgLatency = modelResults.reduce((acc, r) => acc + r.latency, 0) / modelResults.length;
+    // `?? 0` only satisfies TypeScript: the filter above already removed null latencies.
+    const avgLatency = modelResults.reduce((acc, r) => acc + (r.latency ?? 0), 0) / modelResults.length;
     const avgTps = modelResults.reduce((acc, r) => acc + r.tps, 0) / modelResults.length;
     return {
       Model: m.label,

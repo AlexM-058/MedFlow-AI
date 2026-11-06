@@ -38,6 +38,9 @@ export interface LLMResponse {
 
 type Provider = "gemini" | "ollama";
 
+/** The Gemini model used for the doctor analysis. Sent to Backend, which stores it in ai_analyses.model_name. */
+export const GEMINI_MODEL = "gemini-3-flash-preview";
+
 /**
  * Unified LLM Client
  * Reusable wrapper for calling different LLM providers (Gemini, Ollama)
@@ -131,7 +134,7 @@ export class LLMClient {
     console.log(`[LLMClient] Calling Gemini 3 Flash (storeData: ${options.storeData})`);
 
     const model = this.geminiClient.getGenerativeModel({
-      model: "gemini-3-flash-preview",
+      model: GEMINI_MODEL,
       generationConfig: {
         temperature: options.temperature ?? 0.7,
         topP: options.topP ?? 0.95,

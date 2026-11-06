@@ -41,12 +41,15 @@ export class EdgeSummarizer {
 
   private extractField(text: string, regex: RegExp): string | null {
     const match = text.match(regex);
-    return match ? match[1].trim() : null;
+    // match[1] = the text captured by the first (...) group; TypeScript treats it as possibly undefined.
+    const captured = match ? match[1] : undefined;
+    return captured !== undefined ? captured.trim() : null;
   }
 
   private extractList(text: string, regex: RegExp): string[] {
     const match = text.match(regex);
-    if (!match) return [];
-    return match[1].split(',').map(item => item.trim()).filter(item => item !== "");
+    const captured = match ? match[1] : undefined;
+    if (captured === undefined) return [];
+    return captured.split(',').map(item => item.trim()).filter(item => item !== "");
   }
 }

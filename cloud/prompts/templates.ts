@@ -13,6 +13,7 @@ SISTEM:
 - Oferă EXACT TREI opțiuni argumentate.
 - Semnalează informațiile lipsă sau contradictorii în loc să ghicești.
 - Nu trimite niciodată nimic automat către pacient.
+- Scrie TOATE textele din JSON (opțiuni, argumentări, informații lipsă, contradicții) în limba română. Informațiile lipsă vor fi arătate pacientului ca întrebări, deci formulează-le clar și simplu, în română.
 
 DATE PACIENT:
 {{caseSummary}}
@@ -65,6 +66,7 @@ NOI INFORMAȚII PRIMITE DE LA PACIENT:
 
 SARCINĂ:
 Actualizează analiza bazându-te pe noile informații. Dacă tot mai există lacune critice, menționează-le în "missingInformation". Altfel, finalizează cele 3 opțiuni argumentate.
+Scrie TOATE textele din JSON în limba română, inclusiv "missingInformation".
 
 Returnează analiza în formatul JSON următor:
 {
