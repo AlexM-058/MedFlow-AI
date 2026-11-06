@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { DOCTOR_AI_PROMPT } from "../prompts/doctor-support";
 import { CaseSummary } from "../../core/schemas/case-summary";
+import { ENV } from "../../core/config/env";
 
 export interface DoctorOption {
   option: string;
@@ -19,8 +20,12 @@ export class GeminiDoctorClient {
   private genAI: GoogleGenerativeAI;
   private model: any;
 
-  constructor(apiKey: string) {
-    this.genAI = new GoogleGenerativeAI(apiKey);
+  constructor(apiKey?: string) {
+    const finalApiKey = apiKey || ENV.GEMINI_API_KEY;
+    if (!finalApiKey) {
+      throw new Error("Gemini API Key is required. Provide it in the constructor or set GEMINI_API_KEY in .env");
+    }
+    this.genAI = new GoogleGenerativeAI(finalApiKey);
     this.model = this.genAI.getGenerativeModel({
       model: "gemini-1.5-pro",
       generationConfig: {
