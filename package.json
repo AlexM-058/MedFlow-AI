@@ -1,0 +1,25 @@
+{
+  "name": "medflow-ai",
+  "version": "1.0.0",
+  "description": "This repository contains the AI components of MedFlow:",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlexM-058/MedFlow-AI.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/AlexM-058/MedFlow-AI/issues"
+  },
+  "homepage": "https://github.com/AlexM-058/MedFlow-AI#readme",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "dotenv": "^18.0.9"
+  }
+}
