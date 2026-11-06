@@ -1,3 +1,4 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ENV } from "../config/env";
 
 /**
@@ -9,7 +10,6 @@ export interface LLMRequestConfig {
   temperature?: number;
   topP?: number;
   // Privacy/Retention: controls if data is stored by the provider for training
-  // Aligned with Gemini's 'data_sharing' policies and Local LLM defaults.
   storeData?: boolean;
 }
 
@@ -29,24 +29,29 @@ export interface LLMResponse {
  * with consistent timeout, retry, and privacy handling.
  */
 export class LLMClient {
+  private geminiClient: GoogleGenerativeAI;
+
+  constructor() {
+    this.geminiClient = new GoogleGenerativeAI(ENV.GEMINI_API_KEY || "");
+  }
+
   /**
    * Reusable function to call an LLM
    * @param prompt The text prompt to send to the AI.
    * @param options Configuration for the call.
-   * @param provider 'gemini' | 'ollama' | 'openai' (extendable)
+   * @param provider 'gemini' | 'ollama' (extendable)
    */
   async callLLM(
     prompt: string,
     options: LLMRequestConfig = {},
     provider: 'gemini' | 'ollama' = 'gemini'
   ): Promise<LLMResponse> {
-    const timeout = options.timeoutMs || 30000; // Default 30s
+    const timeout = options.timeoutMs || 30000;
     const maxRetries = options.maxRetries || 3;
 
     let attempt = 0;
     while (attempt < maxRetries) {
       try {
-        // Wrap the provider call in a timeout promise
         return await this.withTimeout(
           this.executeProviderCall(prompt, options, provider),
           timeout
@@ -59,16 +64,12 @@ export class LLMClient {
           throw new Error(`LLM call failed after ${maxRetries} attempts. Last error: ${error.message}`);
         }
 
-        // Exponential backoff
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
       }
     }
     throw new Error("Unexpected LLMClient failure");
   }
 
-  /**
-   * Maps the high-level call to specific provider implementations
-   */
   private async executeProviderCall(prompt: string, options: LLMRequestConfig, provider: string): Promise<LLMResponse> {
     if (provider === 'gemini') {
       return this.callGemini(prompt, options);
@@ -79,26 +80,56 @@ export class LLMClient {
   }
 
   private async callGemini(prompt: string, options: LLMRequestConfig): Promise<LLMResponse> {
-    // In a real implementation, this would use the @google/generative-ai SDK
-    // and pass the `storeData` option to the safety settings or API configuration.
-    console.log(`[LLMClient] Calling Gemini API (storeData: ${options.storeData})`);
+    console.log(`[LLMClient] Calling Gemini 3 Flash (storeData: ${options.storeData})`);
 
-    // Mock implementation for the utility shell
+    const model = this.geminiClient.getGenerativeModel({
+      model: "gemini-3-flash-preview",
+      generationConfig: {
+        temperature: options.temperature ?? 0.7,
+        topP: options.topP ?? 0.95,
+      }
+    });
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+
     return {
-      text: "Gemini response placeholder",
-      usage: { promptTokens: 10, completionTokens: 10, totalTokens: 20 },
-      rawResponse: {}
+      text: text,
+      usage: {
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0
+      },
+      rawResponse: response
     };
   }
 
   private async callOllama(prompt: string, options: LLMRequestConfig): Promise<LLMResponse> {
     console.log(`[LLMClient] Calling Local Ollama at ${ENV.EDGE_LLM_ENDPOINT}`);
 
-    // Mock implementation for the utility shell
+    const response = await fetch(`${ENV.EDGE_LLM_ENDPOINT}/api/generate`, {
+      method: 'POST',
+      body: JSON.stringify({
+        model: ENV.EDGE_LLM_MODEL,
+        prompt: prompt,
+        stream: false,
+        options: {
+          temperature: options.temperature ?? 0.7,
+        }
+      })
+    });
+
+    const data = await response.json();
+
     return {
-      text: "Ollama response placeholder",
-      usage: { promptTokens: 10, completionTokens: 10, totalTokens: 20 },
-      rawResponse: {}
+      text: data.response,
+      usage: {
+        promptTokens: data.prompt_eval_count || 0,
+        completionTokens: data.eval_count || 0,
+        totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0)
+      },
+      rawResponse: data
     };
   }
 
