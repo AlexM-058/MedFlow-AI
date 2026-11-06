@@ -1,0 +1,13 @@
+LABORATOR ANALIZE MEDICALE „BIOTEST” (fictiv)
+BULETIN DE ANALIZE MEDICALE
+Pacient: Elena Georgescu (fictiv), 45 ani
+Data recoltării: 20.10.2025
+Data eliberării: 21.10.2025
+HEMOLEUCOGRAMĂ          Rezultat   UM          Interval de referință
+Hemoglobină             13,5       g/dL        12 - 16
+Hematocrit              40,2       %           36 - 46
+Leucocite               7,2        10^3/µL     4 - 10
+Trombocite              250        10^3/µL     150 - 400
+BIOCHIMIE
+Glicemie                92         mg/dL       70 - 110
+Creatinină serică       0,9        mg/dL       0,6 - 1,2

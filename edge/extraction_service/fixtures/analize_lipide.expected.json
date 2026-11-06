@@ -1,0 +1,12 @@
+{
+  "medications": [],
+  "diagnoses": ["Dislipidemie mixtă"],
+  "lab_results": [
+    {"test": "Colesterol total", "value": "245", "unit": "mg/dL"},
+    {"test": "LDL colesterol", "value": "160", "unit": "mg/dL"},
+    {"test": "HDL colesterol", "value": "42", "unit": "mg/dL"},
+    {"test": "Trigliceride", "value": "210", "unit": "mg/dL"},
+    {"test": "TSH", "value": "2,1", "unit": "µUI/mL"}
+  ],
+  "dates": ["05.09.2025"]
+}

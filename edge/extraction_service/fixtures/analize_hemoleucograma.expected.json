@@ -1,0 +1,13 @@
+{
+  "medications": [],
+  "diagnoses": [],
+  "lab_results": [
+    {"test": "Hemoglobină", "value": "13,5", "unit": "g/dL"},
+    {"test": "Hematocrit", "value": "40,2", "unit": "%"},
+    {"test": "Leucocite", "value": "7,2", "unit": "10^3/µL"},
+    {"test": "Trombocite", "value": "250", "unit": "10^3/µL"},
+    {"test": "Glicemie", "value": "92", "unit": "mg/dL"},
+    {"test": "Creatinină serică", "value": "0,9", "unit": "mg/dL"}
+  ],
+  "dates": ["20.10.2025", "21.10.2025"]
+}

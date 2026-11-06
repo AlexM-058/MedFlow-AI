@@ -1,0 +1,10 @@
+{
+  "medications": [
+    {"name": "Amoxicilină", "dose": "500 mg", "frequency": "1 cp la 8 ore"},
+    {"name": "Paracetamol", "dose": "500 mg", "frequency": "la nevoie"},
+    {"name": "Strepsils", "dose": null, "frequency": "1 pastilă la 3 ore"}
+  ],
+  "diagnoses": ["Faringită acută"],
+  "lab_results": [],
+  "dates": ["02.11.2025", "10.11.2025"]
+}

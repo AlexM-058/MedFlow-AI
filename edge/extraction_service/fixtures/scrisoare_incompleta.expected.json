@@ -1,0 +1,8 @@
+{
+  "medications": [
+    {"name": "Ibuprofen", "dose": null, "frequency": "la nevoie"}
+  ],
+  "diagnoses": [],
+  "lab_results": [],
+  "dates": []
+}

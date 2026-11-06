@@ -1,0 +1,10 @@
+{
+  "medications": [
+    {"name": "Amlodipină", "dose": "5 mg", "frequency": "1 cp/zi"},
+    {"name": "Metformin", "dose": "500 mg", "frequency": "2 cp/zi"},
+    {"name": "Atorvastatină", "dose": "20 mg", "frequency": "1 cp seara"}
+  ],
+  "diagnoses": ["Hipertensiune arterială esențială"],
+  "lab_results": [],
+  "dates": ["14.03.2025"]
+}

@@ -1,0 +1,9 @@
+# Serviciul de extragere MedGemma (Python + FastAPI).
+# Instalare (din acest folder):
+#   py -3.13 -m venv .venv
+#   .venv\Scripts\python -m pip install -r requirements.txt
+fastapi==0.162.0
+uvicorn==0.54.0
+httpx2==2.16.0
+pymupdf==2.1
+pytest==9.2.0

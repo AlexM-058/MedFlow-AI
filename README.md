@@ -5,7 +5,12 @@ This repository contains the AI components of MedFlow:
 - `edge/`: local extraction and minimization before any cloud request.
 - `cloud/`: orchestration and summaries using minimized inputs.
 
-Implementation language: TypeScript.
+Implementation language: TypeScript, except `edge/extraction_service/`.
+
+`edge/extraction_service/` is the document extraction service used by MedFlow-Backend
+(`POST /extract`): **Python + FastAPI** with MedGemma running locally in Ollama. It reads
+prescriptions and lab results (JPG, PNG, PDF) and returns structured JSON without
+inventing missing values. Setup, contract and tests: `edge/extraction_service/README.md`.
 
 ## 🚀 Getting Started
 

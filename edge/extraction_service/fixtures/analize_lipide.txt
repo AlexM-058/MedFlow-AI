@@ -1,0 +1,11 @@
+CENTRUL MEDICAL „VITA” (fictiv) - Laborator
+Buletin de analize nr. 12345
+Data recoltării: 05.09.2025
+Trimis de: Dr. Andrei Pop (fictiv)
+Diagnostic de trimitere: Dislipidemie mixtă
+Analiză                 Rezultat       Valori normale
+Colesterol total        245 mg/dL      < 200
+LDL colesterol          160 mg/dL      < 130
+HDL colesterol          42 mg/dL       > 40
+Trigliceride            210 mg/dL      < 150
+TSH                     2,1 µUI/mL     0,4 - 4,0
