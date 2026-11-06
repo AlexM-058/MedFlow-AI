@@ -11,13 +11,15 @@ import os
 
 import httpx2
 
+import time_budget
 from errors import ExtractionError
 
 # Aceleași nume de variabile ca în MedFlow-AI/core/config/env.ts.
 OLLAMA_URL = os.environ.get("EDGE_LLM_ENDPOINT", "http://localhost:11434").rstrip("/")
 MODEL = os.environ.get("EDGE_LLM_MEDGEMMA", "medgemma1.5:4b")
 
-# Backend-ul ne așteaptă 60 s în total. Un singur apel nu are voie să le consume pe toate.
+# Cât are voie să dureze UN apel la Ollama. În plus, apelul nu are voie să depășească
+# bugetul total al cererii (vezi time_budget.py): se ia minimul dintre cele două.
 TIMEOUT_SECONDS = 45
 
 # Mărimea „memoriei de lucru” a modelului (prompt + document + răspuns), în tokeni.
@@ -30,11 +32,17 @@ def generate(
     image: bytes | None = None,
     json_schema: dict | None = None,
     max_tokens: int = 1024,
+    deadline: float | None = None,
 ) -> tuple[str, bool]:
     """Întoarce (textul răspunsului, a_fost_tăiat).
 
     a_fost_tăiat = True dacă modelul a atins limita `max_tokens` înainte să termine.
+    deadline = termenul limită al cererii (time_budget.new_deadline()); None = fără buget.
     """
+    # Verificăm bugetul ÎNAINTE să apelăm Ollama: dacă timpul s-a terminat, aruncă 504
+    # și Ollama nu mai e apelat deloc. Altfel, timeout-ul e cel mult cât a mai rămas.
+    timeout = time_budget.seconds_left(deadline, TIMEOUT_SECONDS)
+
     body: dict = {
         "model": MODEL,
         "prompt": prompt,
@@ -51,7 +59,7 @@ def generate(
         body["format"] = json_schema
 
     try:
-        response = httpx2.post(f"{OLLAMA_URL}/api/generate", json=body, timeout=TIMEOUT_SECONDS)
+        response = httpx2.post(f"{OLLAMA_URL}/api/generate", json=body, timeout=timeout)
     except httpx2.TimeoutException:
         raise ExtractionError(504, "MedGemma nu a răspuns la timp")
     except httpx2.HTTPError:

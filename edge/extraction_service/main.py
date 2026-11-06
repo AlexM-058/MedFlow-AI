@@ -17,6 +17,8 @@ from fastapi import Body, FastAPI, Header
 from fastapi.responses import JSONResponse
 
 import medgemma_client
+import ocr
+import time_budget
 from dates import find_dates
 from errors import ExtractionError
 from extraction import extract_fields
@@ -37,13 +39,21 @@ app = FastAPI(title="MedFlow MedGemma extraction")
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "medflow-medgemma-extraction", "model": medgemma_client.MODEL}
+    return {
+        "status": "ok",
+        "service": "medflow-medgemma-extraction",
+        "model": medgemma_client.MODEL,  # modelul care face extragerea (pasul 2)
+        "ocr_engine": ocr.active_engine(),  # cine citește pozele și paginile scanate (pasul 1)
+    }
 
 
 def extract_document(data: bytes, content_type: str) -> ExtractedData:
     """Cei 3 pași, în ordine."""
-    document = read_document(data, content_type)  # 1. textul documentului
-    extraction = extract_fields(document.text)  # 2. MedGemma -> JSON
+    # Toată cererea are un buget de timp (time_budget.py). Termenul limită e transmis mai
+    # departe fiecărui pas care apelează AI-ul; dacă se depășește, răspundem 504.
+    deadline = time_budget.new_deadline()
+    document = read_document(data, content_type, deadline)  # 1. textul documentului
+    extraction = extract_fields(document.text, deadline)  # 2. MedGemma -> JSON
     verified, warnings = verify_extraction(extraction, document.text)  # 3. reguli fixe
 
     return ExtractedData(

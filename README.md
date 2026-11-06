@@ -69,6 +69,18 @@ docker run --rm --env-file .env -e HOST=0.0.0.0 -p 8091:8091 medflow-ai
 | `GET /health` | none | `200` + `{"status":"ok","service":"medflow-ai-cloud"}` |
 | `POST /analysis` | `{"caseId", "caseSummary": CaseSummary, "documentsContext"?, "patientResponse"?, "state": object \| null}` | `200` + `{"result": {"status": "FINAL" \| "CLARIFICATION_REQUIRED", "data"}, "state": object \| null, "model": "gemini-3-flash-preview"}` |
 
+| `POST /case-summary` | `{"caseId", "patientId", "language": "ro" \| "en", "messages": [{"sender_role", "content", "created_at"}]}` (non-empty, chronological) | `200` + `{"caseSummary": CaseSummary, "model"}`; `400` invalid body; `500` scrub/LLM/parse failure |
+
+- `/case-summary` (`cloud/summarizer/case-summary-builder.ts`) builds the `CaseSummary` from the
+  case conversation: every message line is scrubbed (fail-closed) before the LLM; `redFlagsDetected`
+  comes from the fixed rules in `edge/safety/redflags.ts` on the patient's messages, never from the
+  LLM; `rawTranscript` is the scrubbed transcript. Provider: `DEFAULT_SUMMARY_PROVIDER` (`"gemini"`;
+  `"ollama"` uses `EDGE_LLM_MEDGEMMA`, i.e. MedGemma) — one line to switch.
+- `PrivacyGateway` also removes Romanian data: CNP, phones (`07xx…`, `+40…`, landlines), dates
+  `14.03.2025`, IBAN `RO…`; medical values (`13,5 g/dL`, `120/80`, `500 mg`) stay. Names and addresses
+  are NOT removed yet. Tests: `npx tsx --test cloud/orchestration/privacy-gateway.test.ts`.
+- `edge/safety/redflags.ts` matches without diacritics and checks Romanian and English phrases;
+  it has a copy in `MedFlow-Backend/src/redFlags.ts` (checks patient messages): keep both in sync.
 - `caseSummary`, `documentsContext` **and** `patientResponse` all go through `PrivacyGateway` before the
   prompt is built (fail-closed). The clarification question is in the case's language (Romanian by
   default), and the Romanian prompts ask Gemini to write every text, including `missingInformation`, in Romanian.

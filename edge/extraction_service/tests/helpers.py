@@ -46,8 +46,8 @@ class FakeMedGemma:
         }
         self.calls: list[dict] = []
 
-    def __call__(self, prompt, image=None, json_schema=None, max_tokens=1024):
-        self.calls.append({"prompt": prompt, "image": image, "json_schema": json_schema})
+    def __call__(self, prompt, image=None, json_schema=None, max_tokens=1024, deadline=None):
+        self.calls.append({"prompt": prompt, "image": image, "json_schema": json_schema, "deadline": deadline})
         if json_schema is not None:
             raw = self.extraction if isinstance(self.extraction, str) else json.dumps(self.extraction)
             return raw, False

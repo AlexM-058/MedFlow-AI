@@ -6,6 +6,7 @@ import {
   type OrchestrationState,
   type OrchestrationStateStore,
 } from "./orchestration/doctor-orchestrator";
+import { buildCaseSummary } from "./summarizer/case-summary-builder";
 
 /**
  * HTTP service for the cloud part of MedFlow-AI (Doctor AI orchestration).
@@ -22,6 +23,14 @@ import {
  *           model = the LLM that produced the result (Backend stores it in ai_analyses.model_name)
  *     400:  { error }   invalid body
  *     500:  { error }   privacy scrubbing or LLM (Gemini) failure
+ *   POST /case-summary
+ *     body: { caseId, patientId, language: "ro" | "en",
+ *             messages: [{ sender_role: "patient"|"doctor"|"ai"|"system", content, created_at }] }
+ *           messages = the case_messages of the case, in chronological order (at least one)
+ *     200:  { caseSummary: CaseSummary, model }
+ *           built by cloud/summarizer/case-summary-builder.ts (scrubbed, red flags by fixed rules)
+ *     400:  { error }   invalid body
+ *     500:  { error }   privacy scrubbing or LLM failure
  *
  * This service has NO database access. Backend reads the state, sends it here and
  * saves the state it gets back. Backend also does all authorization and the full
@@ -74,6 +83,28 @@ app.post("/analysis", async (request, response) => {
   }
 });
 
+app.post("/case-summary", async (request, response) => {
+  const body = request.body ?? {};
+  const bodyError = findCaseSummaryBodyError(body);
+  if (bodyError) {
+    response.status(400).json({ error: bodyError });
+    return;
+  }
+
+  try {
+    const result = await buildCaseSummary({
+      caseId: body.caseId,
+      patientId: body.patientId,
+      language: body.language,
+      messages: body.messages,
+    });
+    response.json({ caseSummary: result.caseSummary, model: result.model });
+  } catch (error) {
+    console.error(`[AI server] Case summary failed: ${error instanceof Error ? error.message : error}`);
+    response.status(500).json({ error: "AI case summary failed" });
+  }
+});
+
 // express.json() throws on invalid JSON or on a body over the limit: answer with JSON, not HTML.
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
   if (error instanceof SyntaxError) {
@@ -104,6 +135,40 @@ function findBodyError(body: any): string | null {
   }
   if (body.state !== undefined && body.state !== null && typeof body.state !== "object") {
     return "state must be an object or null";
+  }
+  return null;
+}
+
+const MESSAGE_ROLES = ["patient", "doctor", "ai", "system"];
+
+/** Shape check for POST /case-summary. Returns an error message, or null if the body looks right. */
+function findCaseSummaryBodyError(body: any): string | null {
+  if (typeof body.caseId !== "string" || body.caseId === "") {
+    return "caseId must be a non-empty string";
+  }
+  if (typeof body.patientId !== "string" || body.patientId === "") {
+    return "patientId must be a non-empty string";
+  }
+  if (body.language !== "ro" && body.language !== "en") {
+    return 'language must be "ro" or "en"';
+  }
+  if (!Array.isArray(body.messages) || body.messages.length === 0) {
+    return "messages must be a non-empty array";
+  }
+  for (let index = 0; index < body.messages.length; index++) {
+    const message = body.messages[index];
+    if (typeof message !== "object" || message === null) {
+      return `messages[${index}] must be an object`;
+    }
+    if (!MESSAGE_ROLES.includes(message.sender_role)) {
+      return `messages[${index}].sender_role must be one of: ${MESSAGE_ROLES.join(", ")}`;
+    }
+    if (typeof message.content !== "string") {
+      return `messages[${index}].content must be a string`;
+    }
+    if (typeof message.created_at !== "string") {
+      return `messages[${index}].created_at must be a string`;
+    }
   }
   return null;
 }
