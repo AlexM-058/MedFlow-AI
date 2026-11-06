@@ -1,4 +1,5 @@
 import express from "express";
+import { GEMINI_MODEL } from "../core/ai/llm-client";
 import { validateEnv } from "../core/config/env";
 import {
   DoctorOrchestrator,
@@ -16,8 +17,9 @@ import {
  *   POST /analysis
  *     body: { caseId, caseSummary, documentsContext?, patientResponse?, state }
  *           state = current value of cases.doctor_orchestration_state (object or null)
- *     200:  { result: { status: "FINAL" | "CLARIFICATION_REQUIRED", data }, state }
+ *     200:  { result: { status: "FINAL" | "CLARIFICATION_REQUIRED", data }, state, model }
  *           state = the value Backend must save back in cases.doctor_orchestration_state
+ *           model = the LLM that produced the result (Backend stores it in ai_analyses.model_name)
  *     400:  { error }   invalid body
  *     500:  { error }   privacy scrubbing or LLM (Gemini) failure
  *
@@ -65,7 +67,7 @@ app.post("/analysis", async (request, response) => {
       body.documentsContext,
       body.patientResponse
     );
-    response.json({ result, state });
+    response.json({ result, state, model: GEMINI_MODEL });
   } catch (error) {
     console.error(`[AI server] Analysis failed: ${error instanceof Error ? error.message : error}`);
     response.status(500).json({ error: "AI analysis failed" });

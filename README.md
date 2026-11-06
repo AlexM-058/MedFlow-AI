@@ -67,7 +67,11 @@ docker run --rm --env-file .env -e HOST=0.0.0.0 -p 8091:8091 medflow-ai
 | Method and path | Body | Success |
 | --- | --- | --- |
 | `GET /health` | none | `200` + `{"status":"ok","service":"medflow-ai-cloud"}` |
-| `POST /analysis` | `{"caseId", "caseSummary": CaseSummary, "documentsContext"?, "patientResponse"?, "state": object \| null}` | `200` + `{"result": {"status": "FINAL" \| "CLARIFICATION_REQUIRED", "data"}, "state": object \| null}` |
+| `POST /analysis` | `{"caseId", "caseSummary": CaseSummary, "documentsContext"?, "patientResponse"?, "state": object \| null}` | `200` + `{"result": {"status": "FINAL" \| "CLARIFICATION_REQUIRED", "data"}, "state": object \| null, "model": "gemini-3-flash-preview"}` |
+
+- `caseSummary`, `documentsContext` **and** `patientResponse` all go through `PrivacyGateway` before the
+  prompt is built (fail-closed). The clarification question is in the case's language (Romanian by
+  default), and the Romanian prompts ask Gemini to write every text, including `missingInformation`, in Romanian.
 
 - `state` is the value of `cases.doctor_orchestration_state` (Database migration 003). Backend
   sends the current value and saves the `state` it gets back. **The service has no database access.**
