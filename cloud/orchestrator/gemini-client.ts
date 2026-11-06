@@ -35,6 +35,7 @@ export class GeminiDoctorClient {
   }
 
   /**
+   * @deprecated Use DoctorOrchestrator.processCase instead for stateful, privacy-preserving orchestration.
    * Analyzes a case summary and generates 3 argued options for the doctor.
    */
   async analyzeCase(caseSummary: CaseSummary, documentsContext?: string): Promise<DoctorAnalysis> {
