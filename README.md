@@ -46,6 +46,14 @@ The system uses a stateful orchestrator to handle patient clarifications. To tes
 1. Ensure Ollama is running.
 2. Run the application via the main entry point (as configured in your environment).
 
+`DoctorOrchestrator` (`cloud/orchestration/doctor-orchestrator.ts`) does not talk to a
+database itself. Its constructor takes an `OrchestrationStateStore` with two functions,
+`load(sessionId)` and `save(state)`, and keeps nothing in memory between calls.
+MedFlow-Backend passes a store that uses the `cases.doctor_orchestration_state` column
+(Database migration 003) and uses the case id as `sessionId`; the endpoint is
+`POST /cases/{id}/analysis`. Contract change: `new DoctorOrchestrator()` without a
+store, and the old `doctorOrchestrator` singleton export, no longer exist.
+
 ## 🛡️ Safety & Privacy
 - **Privacy First**: All data is scrubbed via the `PrivacyGateway` before being sent to cloud LLMs.
 - **Synthetic Data**: Use synthetic medical data only during development.

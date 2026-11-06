@@ -21,11 +21,31 @@ export interface OrchestrationResult {
 }
 
 /**
+ * Where the orchestrator keeps its state between API requests.
+ *
+ * The orchestrator does NOT know which database is used. Whoever creates it
+ * (MedFlow-Backend) passes an object with these two functions. In the backend
+ * they read/write the `cases.doctor_orchestration_state` column
+ * (MedFlow-Database/migrations/003_doctor_orchestration_state.sql).
+ */
+export interface OrchestrationStateStore {
+  /** Returns the saved state, or null if nothing was saved yet for this session. */
+  load(sessionId: string): Promise<OrchestrationState | null>;
+  /** Saves (overwrites) the full state of the session. */
+  save(state: OrchestrationState): Promise<void>;
+}
+
+/**
  * DoctorOrchestrator coordinates the multi-round interaction between
  * the backend, Privacy Gateway, and the AI (Gemini).
  */
 export class DoctorOrchestrator {
   private readonly MAX_ROUNDS = 2;
+  private readonly stateStore: OrchestrationStateStore;
+
+  constructor(stateStore: OrchestrationStateStore) {
+    this.stateStore = stateStore;
+  }
 
   /**
    * Processes a case summary and returns either a final analysis or a clarification request.
@@ -41,8 +61,7 @@ export class DoctorOrchestrator {
     documentsContext?: string,
     patientResponse?: string
   ): Promise<OrchestrationResult> {
-    // 1. Retrieve/Initialize State
-    // TODO: Replace with actual database/cache lookup
+    // 1. Retrieve/Initialize State (from the store passed to the constructor)
     const state = await this.getState(sessionId);
 
     // 2. Privacy Scrubbing (Input)
@@ -101,7 +120,7 @@ export class DoctorOrchestrator {
   }
 
   private buildPrompt(state: OrchestrationState, summary: any, docs?: string, response?: string): string {
-    const lang = summary.metadata?.language || 'en';
+    const lang: 'ro' | 'en' = summary.metadata?.language || 'en';
 
     // Initial round
     if (state.roundCount === 0 || !response) {
@@ -132,18 +151,22 @@ export class DoctorOrchestrator {
   }
 
   /**
-   * State Management (Stubs)
-   * These should be implemented using a Database or Cache (e.g. Redis)
+   * State Management
+   * Delegates to the OrchestrationStateStore given in the constructor.
    */
   private async getState(sessionId: string): Promise<OrchestrationState> {
-    // TODO: Implementation for retrieving state from DB
-    return { sessionId, roundCount: 0 };
+    const saved = await this.stateStore.load(sessionId);
+    if (saved === null) {
+      // First request for this session: nothing saved yet -> start at round 0.
+      return { sessionId, roundCount: 0 };
+    }
+    return saved;
   }
 
   private async updateState(sessionId: string, updates: Partial<OrchestrationState>): Promise<void> {
-    // TODO: Implementation for saving state to DB
-    console.log(`[DoctorOrchestrator] Updating state for session ${sessionId}:`, updates);
+    // Read the current state, overwrite only the fields from `updates`, save the whole object.
+    const current = await this.getState(sessionId);
+    const newState: OrchestrationState = { ...current, ...updates };
+    await this.stateStore.save(newState);
   }
 }
-
-export const doctorOrchestrator = new DoctorOrchestrator();
