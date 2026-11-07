@@ -116,3 +116,51 @@ def test_health_reports_active_ocr_engine(monkeypatch):
     assert client.get("/health").json()["ocr_engine"] == "medgemma"
     monkeypatch.setenv("OCR_ENGINE", "alt-motor")
     assert client.get("/health").json()["ocr_engine"] == "alt-motor"
+
+
+
+# ---------------------------------------------------------------------------------------
+# Motorul „easyocr”. Nu încărcăm EasyOCR real (lent, cere GPU): înlocuim cititorul cu unul
+# fals, care ține minte ce imagine a primit și întoarce rânduri de text stabilite de noi.
+# ---------------------------------------------------------------------------------------
+
+
+class FakeEasyOcrReader:
+    def __init__(self, lines):
+        self.lines = lines
+        self.calls: list[dict] = []
+
+    def readtext(self, image, detail, paragraph):
+        self.calls.append({"image": image, "detail": detail, "paragraph": paragraph})
+        return self.lines
+
+
+def use_easyocr(monkeypatch, reader):
+    monkeypatch.setenv("OCR_ENGINE", "easyocr")
+    monkeypatch.setattr(ocr, "_easyocr_reader", lambda: reader)
+
+
+def test_easyocr_engine_reads_image_and_joins_lines(monkeypatch, fake):
+    reader = FakeEasyOcrReader(["Hemoglobina 13,5 g/dL", "(12 - 16)"])
+    use_easyocr(monkeypatch, reader)
+    png = make_png()
+
+    assert ocr.image_to_text(png) == ("Hemoglobina 13,5 g/dL\n(12 - 16)", [])
+    assert reader.calls == [{"image": png, "detail": 0, "paragraph": True}]
+    assert fake.calls == []  # MedGemma nu a fost folosit pentru OCR
+
+
+def test_easyocr_without_text_returns_empty_string(monkeypatch):
+    use_easyocr(monkeypatch, FakeEasyOcrReader([]))
+    assert ocr.image_to_text(make_png()) == ("", [])
+
+
+def test_easyocr_that_cannot_start_gives_503(monkeypatch):
+    def broken_reader():
+        raise ExtractionError(503, "EasyOCR nu a putut porni")
+
+    monkeypatch.setenv("OCR_ENGINE", "easyocr")
+    monkeypatch.setattr(ocr, "_easyocr_reader", broken_reader)
+    with pytest.raises(ExtractionError) as error:
+        ocr.image_to_text(make_png())
+    assert error.value.status_code == 503
