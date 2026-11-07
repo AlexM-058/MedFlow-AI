@@ -1,6 +1,12 @@
 import express from "express";
-import { GEMINI_MODEL } from "../core/ai/llm-client";
+import { GEMINI_MODEL, llmClient } from "../core/ai/llm-client";
 import { validateEnv } from "../core/config/env";
+import { assertAnonymousSummary } from "../edge/anonymization/summary";
+import {
+  buildControlQuestionsPrompt,
+  parseControlQuestions,
+  payloadHash,
+} from "./orchestration/control-questions";
 import {
   DoctorOrchestrator,
   type OrchestrationState,
@@ -102,6 +108,37 @@ app.post("/case-summary", async (request, response) => {
   } catch (error) {
     console.error(`[AI server] Case summary failed: ${error instanceof Error ? error.message : error}`);
     response.status(500).json({ error: "AI case summary failed" });
+  }
+});
+
+/**
+ * POST /control-questions   body: { caseId, summary }   (the ONLY way the cloud learns about a patient)
+ *   summary = AnonymizedPatientSummary (edge/anonymization): closed vocabulary terms, age band, lab levels.
+ *   200: { summary, questions: [{id, text, answerType}], rejectedQuestionCount, payloadHash, model }
+ *   400: the body is not exactly an anonymized summary (anything else is refused, never "cleaned")
+ *   500: the model failed or nothing usable passed the fixed safety checks
+ * The model's text is checked with fixed rules (orchestration/control-questions.ts), not trusted.
+ */
+app.post("/control-questions", async (request, response) => {
+  const body = request.body ?? {};
+  if (typeof body.caseId !== "string" || body.caseId === "" || Object.keys(body).some((key) => key !== "caseId" && key !== "summary")) {
+    response.status(400).json({ error: "body must be exactly { caseId, summary }" });
+    return;
+  }
+  let summary;
+  try {
+    summary = assertAnonymousSummary(body.summary);
+  } catch {
+    response.status(400).json({ error: "summary is not an anonymized patient summary" });
+    return;
+  }
+  try {
+    const raw = await llmClient.callLLM(buildControlQuestionsPrompt(summary), { storeData: false });
+    const result = parseControlQuestions(raw.text, summary);
+    response.json({ ...result, payloadHash: payloadHash(summary), model: GEMINI_MODEL });
+  } catch (error) {
+    console.error(`[AI server] Control questions failed: ${error instanceof Error ? error.message : error}`);
+    response.status(500).json({ error: "AI control questions failed" });
   }
 });
 
