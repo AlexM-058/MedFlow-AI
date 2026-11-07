@@ -7,3 +7,5 @@ uvicorn==0.54.0
 httpx2==2.16.0
 pymupdf==2.1
 pytest==9.2.0
+# OCR local pe GPU (OCR_ENGINE=easyocr). Instalează întâi PyTorch cu CUDA, vezi README.
+easyocr==1.7.2

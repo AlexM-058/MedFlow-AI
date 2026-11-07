@@ -5,9 +5,7 @@ Restul serviciului NU știe cine face asta. `text_source.py` apelează doar
 Cine citește efectiv imaginea („motorul” OCR) se alege din variabila de mediu `OCR_ENGINE`:
 
   OCR_ENGINE=medgemma   (implicit)  MedGemma, prin Ollama, transcrie textul din imagine
-
-Astăzi există un singur motor. Echipa va adăuga mai târziu un motor OCR dedicat;
-mutarea s-a făcut ca atunci să schimbăm DOAR acest fișier.
+  OCR_ENGINE=easyocr                EasyOCR, rulează în acest proces, local, pe GPU
 
 ------------------------------------------------------------------------------------------
 CUM ADAUGI UN MOTOR OCR NOU (ex. „tesseract”)
@@ -25,6 +23,7 @@ CUM ADAUGI UN MOTOR OCR NOU (ex. „tesseract”)
 """
 
 import os
+import threading
 
 import medgemma_client
 import time_budget
@@ -50,9 +49,68 @@ def medgemma_image_to_text(image: bytes, deadline: float | None) -> tuple[str, l
     return text, warnings
 
 
+# ---------------------------------------------------------------------------------------
+# Motorul „easyocr”: EasyOCR rulează AICI, în procesul serviciului, pe GPU-ul local.
+# Nu e un server separat (ca Ollama), deci nu facem cereri HTTP: apelăm direct biblioteca.
+# ---------------------------------------------------------------------------------------
+
+# Limbile documentelor: română + engleză (aceleași ca în restul proiectului).
+EASYOCR_LANGUAGES = ["ro", "en"]
+# "true" = rulăm pe GPU. Dacă nu există GPU (CUDA), EasyOCR trece singur pe procesor (mai lent).
+EASYOCR_GPU = os.environ.get("EASYOCR_GPU", "true").strip().lower() == "true"
+# Folderul cu fișierele modelului. Gol = folderul implicit EasyOCR (~/.EasyOCR/model).
+# La PRIMA pornire EasyOCR descarcă modelele de pe internet (doar modelele, nu documente);
+# după aceea merge complet offline.
+EASYOCR_MODEL_DIR = os.environ.get("EASYOCR_MODEL_DIR") or None
+
+# „Cititorul” EasyOCR încarcă modelele în memoria GPU-ului: durează câteva secunde.
+# Îl creăm O SINGURĂ DATĂ, la prima imagine, și îl refolosim la toate cererile următoare.
+_reader = None
+# Un singur GPU -> o singură imagine odată. Lacătul face ca două cereri simultane să aștepte
+# una după alta, în loc să folosească GPU-ul în același timp (ar putea rămâne fără memorie).
+_reader_lock = threading.Lock()
+
+
+def _easyocr_reader():
+    """Întoarce cititorul EasyOCR, creându-l la primul apel."""
+    global _reader
+    if _reader is None:
+        try:
+            # Importăm aici, nu sus în fișier: cine folosește OCR_ENGINE=medgemma nu are nevoie
+            # de EasyOCR instalat (și nici testele).
+            import easyocr
+        except ImportError:
+            raise ExtractionError(503, "EasyOCR nu e instalat (pip install -r requirements.txt)")
+        try:
+            _reader = easyocr.Reader(
+                EASYOCR_LANGUAGES, gpu=EASYOCR_GPU, model_storage_directory=EASYOCR_MODEL_DIR
+            )
+        except Exception:
+            # Ex. modelele lipsesc și nu există internet, sau GPU-ul nu poate fi folosit.
+            raise ExtractionError(503, "EasyOCR nu a putut porni (modelele lipsesc sau GPU indisponibil)")
+    return _reader
+
+
+def easyocr_image_to_text(image: bytes, deadline: float | None) -> tuple[str, list[str]]:
+    """Motorul „easyocr”: EasyOCR citește textul din imagine, local, pe GPU.
+
+    Atenție la timp: EasyOCR rulează în procesul nostru și nu poate fi oprit la jumătate.
+    `image_to_text` verifică bugetul ÎNAINTE de apel; dacă un apel durează prea mult,
+    următorul pas (altă pagină sau extragerea) vede că bugetul s-a terminat și răspunde 504.
+    """
+    with _reader_lock:
+        reader = _easyocr_reader()
+        # detail=0  -> primim doar textele (fără coordonate și scor de încredere);
+        # paragraph=True -> EasyOCR unește cuvintele apropiate în rânduri / paragrafe.
+        # EasyOCR primește direct octeții imaginii (PNG sau JPG).
+        lines = reader.readtext(image, detail=0, paragraph=True)
+    return "\n".join(lines), []
+
+
 # Numele din OCR_ENGINE -> funcția care face OCR. Un motor nou = o intrare nouă aici.
 ENGINES = {
     "medgemma": medgemma_image_to_text,
+    "easyocr": easyocr_image_to_text,
 }
 
 

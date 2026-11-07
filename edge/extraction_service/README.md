@@ -32,7 +32,9 @@ Variabile de mediu (toate opționale):
 |---|---|---|
 | `EDGE_LLM_ENDPOINT` | `http://localhost:11434` | adresa Ollama (același nume ca în `core/config/env.ts`) |
 | `EDGE_LLM_MEDGEMMA` | `medgemma1.5:4b` | modelul MedGemma din Ollama (același nume ca în `core/config/env.ts`) |
-| `OCR_ENGINE` | `medgemma` | cine citește textul din poze și din paginile PDF scanate (vezi „OCR” mai jos) |
+| `OCR_ENGINE` | `medgemma` | cine citește textul din poze și din paginile PDF scanate: `medgemma` sau `easyocr` (vezi „OCR” mai jos) |
+| `EASYOCR_GPU` | `true` | doar pentru `easyocr`: `true` = pe GPU; fără CUDA, EasyOCR trece singur pe procesor |
+| `EASYOCR_MODEL_DIR` | gol | doar pentru `easyocr`: folderul cu modelele (gol = `~/.EasyOCR/model`) |
 | `EXTRACTION_TIME_BUDGET_SECONDS` | `100` | cât are voie să dureze o cerere în total; după aceea răspundem `504` |
 
 `GET /health` → `{"status": "ok", "service": ..., "model": "medgemma1.5:4b", "ocr_engine": "medgemma"}`.
@@ -85,7 +87,16 @@ sau nu răspundem în 120 s, `503` / `504`.
 
 Tot ce înseamnă „citește textul dintr-o imagine” e în `ocr.py`, în funcția
 `image_to_text(imagine) -> (text, avertismente)`. `text_source.py` o apelează și nu știe
-ce motor rulează în spate. Motorul se alege cu `OCR_ENGINE`; azi există doar `medgemma`.
+ce motor rulează în spate. Motorul se alege cu `OCR_ENGINE`:
+- `medgemma` (implicit): MedGemma, prin Ollama;
+- `easyocr`: EasyOCR, în procesul serviciului, local, pe GPU (limbi: română + engleză).
+  Cititorul se încarcă o singură dată, la prima imagine; imaginile se procesează pe rând (un GPU).
+  `503` dacă EasyOCR nu e instalat sau nu poate porni.
+
+  Instalare pe GPU: PyTorch-ul implicit din pip e doar pentru procesor. Instalează întâi
+  varianta cu CUDA (comanda exactă pentru versiunea ta de CUDA: https://pytorch.org/get-started/locally/),
+  apoi `pip install -r requirements.txt`. La prima pornire EasyOCR descarcă modelele
+  (doar modelele, niciun document); după aceea merge offline.
 O valoare necunoscută dă `503` doar pentru poze și PDF-uri scanate (PDF-urile cu text merg în continuare).
 
 Ca să adaugi un motor nou: o funcție `<nume>_image_to_text(image, deadline)` în `ocr.py`,
