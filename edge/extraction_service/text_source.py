@@ -5,13 +5,23 @@
   PDF scanat         -> PyMuPDF face din pagină o imagine PNG -> MedGemma o transcrie
 """
 
+import logging
 from dataclasses import dataclass, field
 from typing import Literal
 
 import pymupdf
 
 import medgemma_client
+import ocr
+import preprocess
 from errors import ExtractionError
+
+logger = logging.getLogger("extraction_service.text_source")
+
+# Sub acest scor mediu (0-100) nu avem încredere în citirea OCR și trecem la MedGemma.
+OCR_MIN_CONFIDENCE = 60
+# Între cele două praguri folosim textul OCR, dar avertizăm pacientul să verifice fiecare valoare.
+OCR_WARN_CONFIDENCE = 75
 
 # Câte pagini citim. O pagină scanată costă ~4 s de transcriere; Backend-ul așteaptă 60 s.
 MAX_PAGES = 3
@@ -83,9 +93,39 @@ def clean_text(text: str) -> str:
     return text.replace("\u00a0", " ").replace("\u00ad", "-")
 
 
+def read_with_ocr(image: bytes) -> tuple[str | None, list[str]]:
+    """Încearcă OCR-ul clasic pe imaginea îmbunătățită.
+
+    Întoarce (text, avertismente) dacă citirea e suficient de sigură, altfel (None, avertismente)
+    și apelantul folosește MedGemma. Nimic nu se aruncă în tăcere: orice abatere e un avertisment.
+    """
+    engine = ocr.get_engine()
+    if engine is None:
+        return None, []
+    try:
+        result = engine.read(preprocess.enhance_for_ocr(image))
+    except ExtractionError:
+        raise
+    except Exception:
+        logger.exception("OCR a eșuat; folosesc MedGemma")
+        return None, ["Citirea OCR a eșuat; am folosit transcrierea MedGemma."]
+
+    if len(result.text.strip()) < MIN_TEXT_CHARS or result.confidence < OCR_MIN_CONFIDENCE:
+        return None, ["Citirea OCR a avut încredere scăzută; am folosit transcrierea MedGemma."]
+    if result.confidence < OCR_WARN_CONFIDENCE:
+        return result.text, ["Textul a fost citit cu încredere scăzută: verificați fiecare valoare."]
+    return result.text, []
+
+
 def transcribe_image(image: bytes) -> tuple[str, list[str]]:
+    # OCR-ul clasic e sursa preferată: textul lui e o sursă independentă de modelul care extrage,
+    # deci regula „valoarea trebuie să apară în text” verifică ceva real. MedGemma rămâne rezerva.
+    ocr_text, ocr_warnings = read_with_ocr(image)
+    if ocr_text is not None:
+        return ocr_text, ocr_warnings
+
     text, truncated = medgemma_client.generate(TRANSCRIBE_PROMPT, image=image, max_tokens=2048)
-    warnings = []
+    warnings = list(ocr_warnings)
     if truncated:
         warnings.append("Transcrierea imaginii a fost întreruptă: o parte din text poate lipsi.")
     return text, warnings

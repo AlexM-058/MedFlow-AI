@@ -7,3 +7,7 @@ uvicorn==0.54.0
 httpx2==2.16.0
 pymupdf==2.1
 pytest==9.2.0
+Pillow==12.2.0
+# OCR clasic (opțional): fără el, citirea imaginilor rămâne la MedGemma.
+# Cere și programul Tesseract cu datele de limbă `ron` și `eng`:
+#   pytesseract
