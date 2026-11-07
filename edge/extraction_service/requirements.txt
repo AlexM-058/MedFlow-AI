@@ -9,3 +9,7 @@ pymupdf==2.1
 pytest==9.2.0
 # OCR local pe GPU (OCR_ENGINE=easyocr). Instalează întâi PyTorch cu CUDA, vezi README.
 easyocr==1.7.2
+# OCR local pe procesor (OCR_ENGINE=tesseract). Cere și programul Tesseract instalat pe calculator,
+# cu datele de limbă `ron` și `eng`; fără el, serviciul trece singur pe MedGemma.
+Pillow==12.2.0
+pytesseract==0.3.13

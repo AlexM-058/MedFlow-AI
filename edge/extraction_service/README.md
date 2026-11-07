@@ -32,7 +32,8 @@ Variabile de mediu (toate opționale):
 |---|---|---|
 | `EDGE_LLM_ENDPOINT` | `http://localhost:11434` | adresa Ollama (același nume ca în `core/config/env.ts`) |
 | `EDGE_LLM_MEDGEMMA` | `medgemma1.5:4b` | modelul MedGemma din Ollama (același nume ca în `core/config/env.ts`) |
-| `OCR_ENGINE` | `medgemma` | cine citește textul din poze și din paginile PDF scanate: `medgemma` sau `easyocr` (vezi „OCR” mai jos) |
+| `OCR_ENGINE` | `medgemma` | cine citește textul din poze și din paginile PDF scanate: `medgemma`, `easyocr` sau `tesseract` (vezi „OCR” mai jos) |
+| `TESSERACT_LANG` | `ron+eng` | doar pentru `tesseract`: limbile Tesseract (dacă lipsește `ron`, folosește ce există și scrie în jurnal) |
 | `EASYOCR_GPU` | `true` | doar pentru `easyocr`: `true` = pe GPU; fără CUDA, EasyOCR trece singur pe procesor |
 | `EASYOCR_MODEL_DIR` | gol | doar pentru `easyocr`: folderul cu modelele (gol = `~/.EasyOCR/model`) |
 | `EXTRACTION_TIME_BUDGET_SECONDS` | `100` | cât are voie să dureze o cerere în total; după aceea răspundem `504` |
@@ -91,7 +92,19 @@ ce motor rulează în spate. Motorul se alege cu `OCR_ENGINE`:
 - `medgemma` (implicit): MedGemma, prin Ollama;
 - `easyocr`: EasyOCR, în procesul serviciului, local, pe GPU (limbi: română + engleză).
   Cititorul se încarcă o singură dată, la prima imagine; imaginile se procesează pe rând (un GPU).
-  `503` dacă EasyOCR nu e instalat sau nu poate porni.
+  Cu `detail=1` și `paragraph=False`: rândurile se formează în `group_into_lines` (casetele de pe
+  aceeași înălțime = un rând), ca un tabel de analize să nu-și amestece coloanele.
+- `tesseract`: programul Tesseract, instalat pe calculator (pe procesor), prin `pytesseract`.
+  Imaginea trece întâi prin `preprocess.py` (rotire EXIF, scalare, contrast, claritate; nu se salvează nicăieri).
+  Cere programul Tesseract cu datele de limbă `ron` și `eng`.
+
+**Citire nesigură și rezerva MedGemma.** Motoarele locale (`easyocr`, `tesseract`) dau un scor de încredere 0-100:
+- sub 60 sau sub 20 de caractere citite → se folosește MedGemma (pe imaginea originală), cu avertisment;
+- între 60 și 75 → se păstrează textul OCR, cu avertisment „verificați fiecare valoare”;
+- motorul lipsește sau pică (`503`/eroare) → tot MedGemma, cu avertisment (în loc de `503` pentru utilizator).
+Imaginea deteriorată (`422`) și bugetul de timp depășit (`504`) NU se ascund în spatele rezervei.
+Avertismentele ajung în `warnings` din răspunsul `/extract`, deci formatul răspunsului nu se schimbă.
+`medgemma` ca motor nu are rezervă: dacă Ollama pică, cererea pică.
 
   Instalare pe GPU: PyTorch-ul implicit din pip e doar pentru procesor. Instalează întâi
   varianta cu CUDA (comanda exactă pentru versiunea ta de CUDA: https://pytorch.org/get-started/locally/),
