@@ -250,3 +250,53 @@ test('impossible calendar dates give no age band', () => {
   assert.equal(ageBandFor('2000-02-30', now), null);
   assert.equal(ageBandFor('2000-02-29', now), '20-29');
 });
+
+// ---------------------------------------------------------------------------------------------------
+// A file with many documents: the same test repeated over time, the most recent dated result decides.
+// ---------------------------------------------------------------------------------------------------
+
+import { toIsoDate } from './summary';
+
+const dated = (documentDate: string | null, value: string) => ({
+  reviewed: true, diagnosesAndLabsConfirmed: true, documentDate, medications: [], diagnoses: [],
+  labResults: [{ test: 'Glicemie', value, referenceRange: '70 - 110' }],
+});
+
+test('the most recent dated lab result decides, whatever the order of the documents', () => {
+  const docs = [dated('2023-02-01', '180'), dated('2026-05-10', '90'), dated('2025-01-01', '150')];
+  for (const order of [docs, [...docs].reverse(), [docs[1]!, docs[0]!, docs[2]!]]) {
+    assert.deepEqual(anonymizeDossier(dossier({ documents: order })).labFindings, [{ test: 'glicemie', level: 'normal' }]);
+  }
+  assert.equal(anonymizeDossier(dossier({ documents: docs })).omittedItemCount, 0);
+});
+
+test('two different results on the same most recent day, or only undated disagreeing results, are not sent', () => {
+  const sameDay = anonymizeDossier(dossier({ documents: [dated('2026-05-10', '90'), dated('2026-05-10', '180'), dated('2020-01-01', '95')] }));
+  assert.deepEqual(sameDay.labFindings, []);
+  const undated = anonymizeDossier(dossier({ documents: [dated(null, '90'), dated(null, '180')] }));
+  assert.deepEqual(undated.labFindings, []);
+});
+
+test('an undated result never overrides a dated one, and the document date is never in the output', () => {
+  const summary = anonymizeDossier(dossier({ documents: [dated(null, '180'), dated('2026-05-10', '90')] }));
+  assert.deepEqual(summary.labFindings, [{ test: 'glicemie', level: 'normal' }]);
+  assert.doesNotMatch(JSON.stringify(summary), /2026-05|2023/);
+});
+
+test('30 documents repeating the same medicines give each medicine once', () => {
+  const doc = { reviewed: true, medications: [{ name: 'Amlodipină 5 mg' }, { name: 'Metformin' }], diagnoses: [], labResults: [] };
+  const summary = anonymizeDossier(dossier({ documents: Array.from({ length: 30 }, () => doc) }));
+  assert.deepEqual(summary.medications, ['amlodipină', 'metformin']);
+  assert.equal(summary.omittedItemCount, 0);
+});
+
+test('toIsoDate converts the dates found in documents and refuses impossible ones', () => {
+  assert.equal(toIsoDate('14.03.2025'), '2025-03-14');
+  assert.equal(toIsoDate('2/11/2025'), '2025-11-02');
+  assert.equal(toIsoDate(' 14-03-2025 '), '2025-03-14');
+  assert.equal(toIsoDate('2025-03-14'), '2025-03-14');
+  assert.equal(toIsoDate('31.02.2025'), null);
+  assert.equal(toIsoDate('14.03.25'), null); // two-digit years are ambiguous: not guessed
+  assert.equal(toIsoDate('martie 2025'), null);
+  assert.equal(toIsoDate(null), null);
+});

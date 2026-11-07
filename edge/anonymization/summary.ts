@@ -58,6 +58,11 @@ export interface DossierInput {
      * Default false: until a review exists for them, diagnoses and lab results stay local.
      */
     diagnosesAndLabsConfirmed?: boolean;
+    /**
+     * ISO date (YYYY-MM-DD) of the document, used ONLY here to pick the most recent lab result when a file has
+     * many documents. It is never forwarded. See toIsoDate() for converting the text found in the document.
+     */
+    documentDate?: string | null;
     medications: { name: string | null }[];
     diagnoses: string[];
     labResults: { test: string | null; value: string | null; referenceRange: string | null }[];
@@ -155,6 +160,31 @@ export function labLevel(value: string | null, referenceRange: string | null): L
   return 'normal';
 }
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Text date found in a document -> ISO date, or null. Accepts dd.mm.yyyy, dd/mm/yyyy, dd-mm-yyyy and yyyy-mm-dd. */
+export function toIsoDate(text: string | null | undefined): string | null {
+  if (typeof text !== 'string') return null;
+  const dmy = /^\s*(\d{1,2})[./-](\d{1,2})[./-](\d{4})\s*$/.exec(text);
+  const ymd = /^\s*(\d{4})-(\d{2})-(\d{2})\s*$/.exec(text);
+  const [year, month, day] = dmy ? [dmy[3], dmy[2], dmy[1]] : ymd ? [ymd[1], ymd[2], ymd[3]] : [];
+  if (!year || !month || !day) return null;
+  const [y, m, d] = [Number(year), Number(month), Number(day)];
+  const real = new Date(Date.UTC(y, m - 1, d));
+  if (real.getUTCFullYear() !== y || real.getUTCMonth() !== m - 1 || real.getUTCDate() !== d) return null;
+  return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/** Level of the most recent dated result; undated results only count when no result is dated. */
+function latestLevel(results: { date: string | null; level: LabLevel }[]): LabLevel | null {
+  const dated = results.filter((entry) => entry.date !== null);
+  const newest = dated.reduce<string | null>((max, entry) => (max === null || (entry.date ?? '') > max ? entry.date : max), null);
+  const pool = newest === null ? results : dated.filter((entry) => entry.date === newest);
+  const levels = new Set(pool.map((entry) => entry.level));
+  const [only] = levels;
+  return levels.size === 1 && only ? only : null;
+}
+
 /** Sorted, de-duplicated, capped list; `dropped` = how many did not fit (counted as omitted, never silent). */
 function capList(values: Iterable<string>): { list: string[]; dropped: number } {
   const all = [...new Set(values)].sort((a, b) => a.localeCompare(b, 'ro'));
@@ -175,7 +205,7 @@ export function anonymizeDossier(input: DossierInput): AnonymizedPatientSummary 
   const conditions = new Set<string>();
   const allergies = new Set<string>();
   const medications = new Set<string>();
-  const labLevels = new Map<string, Set<LabLevel>>();
+  const labResultsByTest = new Map<string, { date: string | null; level: LabLevel }[]>();
 
   for (const document of arrayOf<DossierInput['documents'][number]>(input.documents, 'documents')) {
     const meds = arrayOf<{ name: string | null }>(document.medications, 'medications');
@@ -198,7 +228,8 @@ export function anonymizeDossier(input: DossierInput): AnonymizedPatientSummary 
       const test = exactTerm(lab?.test ?? null, LAB_TEST_LOOKUP);
       const level = labLevel(lab?.value ?? null, lab?.referenceRange ?? null);
       if (!test || !level) { omitted += 1; continue; }
-      labLevels.set(test, (labLevels.get(test) ?? new Set<LabLevel>()).add(level));
+      const date = typeof document.documentDate === 'string' && ISO_DATE.test(document.documentDate) ? document.documentDate : null;
+      labResultsByTest.set(test, [...(labResultsByTest.get(test) ?? []), { date, level }]);
     }
   }
 
@@ -212,12 +243,12 @@ export function anonymizeDossier(input: DossierInput): AnonymizedPatientSummary 
     terms.forEach((term) => target.add(term));
   }
 
-  // Two confirmed results of the same test that disagree (180 and 90): the order of the file must not decide.
-  // The exact dates stay local, so the level is simply not sent.
+  // Many documents repeat the same test over time: the most recent dated result decides. Without dates, or
+  // with two different results on the same day, the order of the file must not decide, so nothing is sent.
   const labs: { test: string; level: LabLevel }[] = [];
-  for (const [test, levels] of labLevels) {
-    const [only] = levels;
-    if (levels.size === 1 && only) labs.push({ test, level: only });
+  for (const [test, results] of labResultsByTest) {
+    const level = latestLevel(results);
+    if (level) labs.push({ test, level });
     else omitted += 1;
   }
   labs.sort((a, b) => a.test.localeCompare(b.test, 'ro'));
