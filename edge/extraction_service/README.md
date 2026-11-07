@@ -34,6 +34,7 @@ Variabile de mediu (toate opționale):
 | `EDGE_LLM_MEDGEMMA` | `medgemma1.5:4b` | modelul MedGemma din Ollama (același nume ca în `core/config/env.ts`) |
 | `OCR_ENGINE` | `medgemma` | cine citește textul din poze și din paginile PDF scanate: `medgemma`, `easyocr` sau `tesseract` (vezi „OCR” mai jos) |
 | `TESSERACT_LANG` | `ron+eng` | doar pentru `tesseract`: limbile Tesseract (dacă lipsește `ron`, folosește ce există și scrie în jurnal) |
+| `OCR_FALLBACK` | `on` | `off` = motoarele locale (`easyocr`, `tesseract`) nu mai cad pe MedGemma când citirea e nesigură sau motorul lipsește; răspund `422` (poză ilizibilă) sau `503`. Folosește `off` când modelul din Ollama nu vede imagini (ex. `gemma3:1b`) |
 | `EASYOCR_GPU` | `true` | doar pentru `easyocr`: `true` = pe GPU; fără CUDA, EasyOCR trece singur pe procesor |
 | `EASYOCR_MODEL_DIR` | gol | doar pentru `easyocr`: folderul cu modelele (gol = `~/.EasyOCR/model`) |
 | `EXTRACTION_TIME_BUDGET_SECONDS` | `100` | cât are voie să dureze o cerere în total; după aceea răspundem `504` |

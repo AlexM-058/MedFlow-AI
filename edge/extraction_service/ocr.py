@@ -53,6 +53,19 @@ OCR_WARN_CONFIDENCE = 75
 OCR_MIN_CHARS = 20
 
 
+UNREADABLE_IMAGE_MESSAGE = "Nu am putut citi imaginea; faceți o poză mai clară, cu tot documentul în cadru."
+
+
+def fallback_enabled() -> bool:
+    """Rezerva „MedGemma citește imaginea” (OCR_FALLBACK, implicit pornită).
+
+    Se oprește cu OCR_FALLBACK=off când modelul din Ollama nu vede imagini (ex. gemma3:1b, doar text):
+    atunci o citire locală nesigură dă 422 în loc să cerem unui model orb să „transcrie” poza.
+    Variabila se citește la fiecare apel, ca testele s-o poată schimba.
+    """
+    return os.environ.get("OCR_FALLBACK", "on").strip().lower() != "off"
+
+
 class OcrUnreliable(Exception):
     """Un motor local a citit imaginea, dar rezultatul nu e destul de sigur ca să-l folosim."""
 
@@ -287,14 +300,20 @@ def image_to_text(image: bytes, deadline: float | None = None) -> tuple[str, lis
     try:
         return engine(image, deadline)
     except OcrUnreliable as unreliable:
+        if not fallback_enabled():
+            raise ExtractionError(422, UNREADABLE_IMAGE_MESSAGE)
         warning = str(unreliable)
     except ExtractionError as error:
         if error.status_code != 503:  # 422 (imagine deteriorată) și 504 (timp) ajung la utilizator
             raise
+        if not fallback_enabled():
+            raise  # motorul lipsește și nu avem rezervă: spunem adevărul (503), nu inventăm text
         logger.warning("Motorul OCR %s nu e disponibil (%s); folosesc MedGemma", name, error.message)
         warning = f"Motorul OCR „{name}” nu e disponibil; am folosit transcrierea MedGemma."
     except Exception:
-        logger.exception("Motorul OCR %s a eșuat; folosesc MedGemma", name)
+        logger.exception("Motorul OCR %s a eșuat", name)
+        if not fallback_enabled():
+            raise ExtractionError(503, "Citirea imaginii a eșuat")
         warning = "Citirea OCR a eșuat; am folosit transcrierea MedGemma."
 
     # MedGemma primește imaginea ORIGINALĂ, nu pe cea îmbunătățită pentru OCR.

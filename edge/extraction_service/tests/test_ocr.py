@@ -323,3 +323,51 @@ def test_tesseract_corrupt_image_is_422_not_a_fallback(monkeypatch, fake):
         ocr.image_to_text(b"\x89PNG\r\n\x1a\nnot really a png")
     assert error.value.status_code == 422
     assert fake.calls == []
+
+
+# ---------------------------------------------------------------------------------------
+# OCR_FALLBACK=off: modelul din Ollama nu vede imagini (ex. gemma3:1b), deci fără rezervă MedGemma.
+# ---------------------------------------------------------------------------------------
+
+
+def test_low_confidence_without_fallback_is_422_and_never_calls_medgemma(monkeypatch, fake):
+    use_tesseract(monkeypatch, WORDS, 30.0)
+    monkeypatch.setenv("OCR_FALLBACK", "off")
+    with pytest.raises(ExtractionError) as error:
+        ocr.image_to_text(make_png())
+    assert error.value.status_code == 422
+    assert error.value.message == ocr.UNREADABLE_IMAGE_MESSAGE
+    assert fake.calls == []
+
+
+def test_missing_engine_without_fallback_stays_503(monkeypatch, fake):
+    def missing():
+        raise ExtractionError(503, "Programul Tesseract nu e instalat pe acest calculator")
+
+    monkeypatch.setenv("OCR_ENGINE", "tesseract")
+    monkeypatch.setenv("OCR_FALLBACK", "off")
+    monkeypatch.setattr(ocr, "_tesseract_ready", missing)
+    with pytest.raises(ExtractionError) as error:
+        ocr.image_to_text(make_png())
+    assert error.value.status_code == 503
+    assert fake.calls == []
+
+
+def test_engine_crash_without_fallback_is_503(monkeypatch, fake):
+    class CrashingReader:
+        def readtext(self, *args, **kwargs):
+            raise RuntimeError("CUDA out of memory")
+
+    use_easyocr(monkeypatch, CrashingReader())
+    monkeypatch.setenv("OCR_FALLBACK", "off")
+    with pytest.raises(ExtractionError) as error:
+        ocr.image_to_text(make_png())
+    assert error.value.status_code == 503
+    assert fake.calls == []
+
+
+def test_good_reading_is_unaffected_by_fallback_off(monkeypatch, fake):
+    use_tesseract(monkeypatch, WORDS, 92.0)
+    monkeypatch.setenv("OCR_FALLBACK", "off")
+    text, warnings = ocr.image_to_text(make_png())
+    assert text.startswith("Hemoglobina") and warnings == []
