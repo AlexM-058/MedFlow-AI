@@ -371,3 +371,33 @@ def test_good_reading_is_unaffected_by_fallback_off(monkeypatch, fake):
     monkeypatch.setenv("OCR_FALLBACK", "off")
     text, warnings = ocr.image_to_text(make_png())
     assert text.startswith("Hemoglobina") and warnings == []
+
+
+# ---------------------------------------------------------------------------------------
+# Găsirea executabilului Tesseract (PATH nu e mereu actualizat după instalare).
+# ---------------------------------------------------------------------------------------
+
+
+def test_tesseract_command_prefers_the_environment_variable(monkeypatch):
+    monkeypatch.setenv("TESSERACT_CMD", r"D:\tools\tesseract.exe")
+    assert ocr._tesseract_command() == r"D:\tools\tesseract.exe"
+
+
+def test_tesseract_command_is_left_to_pytesseract_when_on_path(monkeypatch):
+    monkeypatch.delenv("TESSERACT_CMD", raising=False)
+    monkeypatch.setattr(ocr.shutil, "which", lambda name: r"C:\x\tesseract.exe")
+    assert ocr._tesseract_command() is None
+
+
+def test_tesseract_command_falls_back_to_the_standard_windows_path(monkeypatch):
+    monkeypatch.delenv("TESSERACT_CMD", raising=False)
+    monkeypatch.setattr(ocr.shutil, "which", lambda name: None)
+    monkeypatch.setattr(ocr.os.path, "isfile", lambda path: path == ocr.WINDOWS_TESSERACT_PATH)
+    assert ocr._tesseract_command() == ocr.WINDOWS_TESSERACT_PATH
+
+
+def test_tesseract_command_is_none_when_nothing_is_found(monkeypatch):
+    monkeypatch.delenv("TESSERACT_CMD", raising=False)
+    monkeypatch.setattr(ocr.shutil, "which", lambda name: None)
+    monkeypatch.setattr(ocr.os.path, "isfile", lambda path: False)
+    assert ocr._tesseract_command() is None

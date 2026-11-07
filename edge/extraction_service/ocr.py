@@ -34,6 +34,7 @@ CUM ADAUGI UN MOTOR OCR NOU (ex. „rapidocr”)
 import io
 import logging
 import os
+import shutil
 import threading
 
 import medgemma_client
@@ -213,6 +214,20 @@ TESSERACT_LANG = os.environ.get("TESSERACT_LANG", "ron+eng").strip()
 
 _tesseract_lang: str | None = None
 
+# Calea standard a instalării pe Windows. Folosită doar dacă `tesseract` nu e pe PATH (după o instalare
+# nouă, PATH-ul se actualizează abia în terminalele deschise ulterior) și TESSERACT_CMD nu e setat.
+WINDOWS_TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+
+def _tesseract_command() -> str | None:
+    """Executabilul Tesseract: TESSERACT_CMD, altfel PATH, altfel calea standard Windows; None = lăsăm pytesseract."""
+    configured = os.environ.get("TESSERACT_CMD", "").strip()
+    if configured:
+        return configured
+    if shutil.which("tesseract"):
+        return None  # e pe PATH: pytesseract îl găsește singur
+    return WINDOWS_TESSERACT_PATH if os.path.isfile(WINDOWS_TESSERACT_PATH) else None
+
 
 def _tesseract_ready():
     """Întoarce (pytesseract, limbile folosibile). Limbile se verifică o singură dată."""
@@ -221,6 +236,9 @@ def _tesseract_ready():
         import pytesseract
     except ImportError:
         raise ExtractionError(503, "pytesseract nu e instalat (pip install -r requirements.txt)")
+    command = _tesseract_command()
+    if command:
+        pytesseract.pytesseract.tesseract_cmd = command
 
     if _tesseract_lang is None:
         try:
