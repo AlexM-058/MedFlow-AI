@@ -18,6 +18,8 @@ const q = (id: string, text: string, answerType = 'yes_no') => ({ id, text, answ
 test('the prompt contains only the anonymized summary, never an identifier', () => {
   const prompt = buildControlQuestionsPrompt(summary);
   assert.ok(prompt.includes('diabet zaharat') && prompt.includes('metformin') && prompt.includes('40-49'));
+  assert.ok(prompt.includes('empatie, calm și respect'));
+  assert.ok(prompt.includes('factual și neutru'));
   for (const secret of ['Ionescu', 'Maria', 'Florilor', '1980', '03-14']) assert.ok(!prompt.includes(secret), secret);
 });
 
