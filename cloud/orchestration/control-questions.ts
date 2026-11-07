@@ -57,6 +57,14 @@ export function deterministicSummary(summary: AnonymizedPatientSummary): string 
 export function buildControlQuestionsPrompt(summary: AnonymizedPatientSummary): string {
   return `Ești asistentul MedFlow care pregătește întrebări de control pentru un pacient, pe baza unui rezumat anonimizat al dosarului său medical.
 
+TON ȘI ABORDARE:
+- Vorbește cu empatie, calm și respect. Ia în serios ceea ce relatează pacientul, fără să judeci, să învinovățești sau să minimalizezi.
+- Adresează fiecare întrebare direct pacientului la persoana a doua, folosind forme politicoase precum "Cum vă simțiți?" sau "Ați observat...?". Nu vorbi despre pacient la persoana a treia și nu folosi "pacientul".
+- Formulează întrebările firesc, clar și blând, fără presiune sau reproș. Nu presupune ce simte pacientul și nu oferi reasigurări nejustificate.
+- Rezumatul rămâne factual și neutru. Păstrează denumirile afecțiunilor și medicamentelor așa cum apar în date; nu le extinde, interpreta sau înlocui cu termeni medicali mai specifici. Nu adăuga emoții ori informații neconfirmate.
+- Fiecare întrebare trebuie să conțină câmpurile "id", "text" și "answerType". "answerType" este obligatoriu și trebuie să fie exact una dintre valorile "yes_no", "number" sau "short_text".
+- Înainte de răspuns, verifică faptul că fiecare întrebare se adresează direct pacientului și că niciun câmp obligatoriu nu lipsește.
+
 REGULI:
 - Nu pui diagnostic, nu recomanzi tratament, nu menționezi doze și nu spui pacientului să ia, să oprească sau să schimbe ceva.
 - Întrebările doar COLECTEAZĂ informații pentru medic: lipsuri din dosar, cum se simte acum, ce s-a schimbat, ce medicamente ia efectiv.
@@ -71,7 +79,7 @@ Returnează DOAR acest JSON:
 {
   "summary": "rezumat factual de 1-3 propoziții",
   "questions": [
-    { "id": "q1", "text": "întrebare?", "answerType": "yes_no" | "number" | "short_text" }
+    { "id": "q1", "text": "Cum vă simțiți astăzi?", "answerType": "short_text" }
   ]
 }`;
 }
@@ -103,7 +111,7 @@ export function parseControlQuestions(raw: string, summary: AnonymizedPatientSum
     const valid = isRecord(entry)
       && typeof entry.id === 'string' && SLUG.test(entry.id) && !seenIds.has(entry.id)
       && typeof entry.text === 'string' && entry.text.trim().length >= 8 && entry.text.trim().length <= MAX_QUESTION_LENGTH
-      && entry.text.trim().endsWith('?') && !isUnsafeText(entry.text)
+      && entry.text.trim().endsWith('?') && !hasEncodingErrors(entry.text) && !isUnsafeText(entry.text)
       && typeof entry.answerType === 'string' && (ANSWER_TYPES as readonly string[]).includes(entry.answerType);
     if (!valid || questions.length >= MAX_QUESTIONS) { rejected += 1; continue; }
     const record = entry as Record<string, string>;
@@ -113,8 +121,12 @@ export function parseControlQuestions(raw: string, summary: AnonymizedPatientSum
   if (questions.length === 0) throw new Error('No usable control question after the safety checks');
 
   const text = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
-  const usable = text.length > 0 && text.length <= MAX_SUMMARY_LENGTH && !isUnsafeText(text);
+  const usable = text.length > 0 && text.length <= MAX_SUMMARY_LENGTH && !hasEncodingErrors(text) && !isUnsafeText(text);
   return { summary: usable ? text : deterministicSummary(summary), questions, rejectedQuestionCount: rejected };
+}
+
+function hasEncodingErrors(text: string): boolean {
+  return text.includes('\uFFFD');
 }
 
 /** Hash of exactly what leaves for the cloud (for the disclosure log: the hash, never the content). */
