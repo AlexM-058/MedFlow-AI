@@ -102,6 +102,7 @@ export async function buildCaseSummary(
     throw new Error("AI case summary was malformed. Please try again.");
   }
   const fallback = NOT_SPECIFIED[language];
+  const onset = textOrDefault(fields.onset, fallback);
 
   // 4. Red flags: deterministic rules, NOT the LLM. We check the ORIGINAL patient messages
   //    (this runs on our server, nothing is sent anywhere). Both rule sets are checked,
@@ -119,8 +120,8 @@ export async function buildCaseSummary(
 
   const caseSummary: CaseSummary = {
     chiefComplaint: textOrDefault(fields.chiefComplaint, fallback),
-    onset: textOrDefault(fields.onset, fallback),
-    duration: textOrDefault(fields.duration, fallback),
+    onset,
+    duration: durationFrom(fields.duration, onset, scrubbedTranscript, fallback),
     pattern: textOrDefault(fields.pattern, fallback),
     severity: severityFrom(fields.severity),
     associatedSymptoms: textList(fields.associatedSymptoms),
@@ -157,6 +158,36 @@ function textOrDefault(value: unknown, fallback: string): string {
     return value.trim();
   }
   return fallback;
+}
+
+function durationFrom(value: unknown, onset: string, transcript: string, fallback: string): string {
+  const duration = textOrDefault(value, fallback);
+  const normalizedDuration = normalizeText(duration);
+  const patternOnly = /^(?:continua|continuu|constant|intermitent(?:a)?|intermittent|continuous|comes and goes|apare si dispare)$/;
+  if (!patternOnly.test(normalizedDuration)) {
+    return duration;
+  }
+
+  const normalizedOnset = normalizeText(onset);
+  const timeSpan = /^(?:(?:de|for|about|approximately|aproximativ)\s+)?(?:\d+(?:[.,]\d+)?|cateva|mai multe|few|several|a few|a|an|one|two|three|four|five|six|seven|eight|nine|ten|doua)\s+(?:secunde?|seconds?|minute?|minutes?|ore?|hours?|zile?|days?|saptamani|weeks?|luni|months?|ani|years?)$/;
+  return timeSpan.test(normalizedOnset) && containsPhrase(normalizeText(transcript), normalizedOnset)
+    ? onset
+    : fallback;
+}
+
+function containsPhrase(text: string, phrase: string): boolean {
+  const index = text.indexOf(phrase);
+  if (index < 0) {
+    return false;
+  }
+  const before = index === 0 || !/[a-z0-9]/.test(text[index - 1] ?? "");
+  const afterIndex = index + phrase.length;
+  const after = afterIndex === text.length || !/[a-z0-9]/.test(text[afterIndex] ?? "");
+  return before && after;
+}
+
+function normalizeText(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
 }
 
 /** A list of texts. Numbers are kept as text; empty items and non-text items are skipped. */

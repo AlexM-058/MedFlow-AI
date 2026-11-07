@@ -19,6 +19,10 @@ test('the prompt contains only the anonymized summary, never an identifier', () 
   const prompt = buildControlQuestionsPrompt(summary);
   assert.ok(prompt.includes('diabet zaharat') && prompt.includes('metformin') && prompt.includes('40-49'));
   assert.ok(prompt.includes('empatie, calm și respect'));
+  assert.ok(prompt.includes('Adresează fiecare întrebare direct pacientului la persoana a doua'));
+  assert.ok(prompt.includes('Nu vorbi despre pacient la persoana a treia'));
+  assert.ok(prompt.includes('"answerType" este obligatoriu'));
+  assert.ok(prompt.includes('"text": "Cum vă simțiți astăzi?"'));
   assert.ok(prompt.includes('factual și neutru'));
   for (const secret of ['Ionescu', 'Maria', 'Florilor', '1980', '03-14']) assert.ok(!prompt.includes(secret), secret);
 });
@@ -48,6 +52,18 @@ test('questions that give advice, doses or a diagnosis are dropped by fixed rule
   assert.ok(unsafe.every((text) => isUnsafeText(text)));
   assert.ok(!isUnsafeText('Ce simptome ați observat în ultima săptămână?'));
   assert.ok(!isUnsafeText('Ce medicamente luați în prezent?'));
+});
+
+test('questions and summaries with Unicode replacement characters are rejected', () => {
+  const result = parseControlQuestions(answer([
+    q('bad', 'Cum v\uFFFD simțiți astăzi?'),
+    q('good', 'Cum vă simțiți astăzi?', 'short_text'),
+  ], 'Pacient cu astm\uFFFD.'), summary);
+  assert.deepEqual(result.questions, [
+    { id: 'good', text: 'Cum vă simțiți astăzi?', answerType: 'short_text' },
+  ]);
+  assert.equal(result.summary, deterministicSummary(summary));
+  assert.equal(result.rejectedQuestionCount, 1);
 });
 
 test('malformed questions are dropped: no question mark, too short or long, bad id, duplicate id, bad type, extra than 8', () => {
