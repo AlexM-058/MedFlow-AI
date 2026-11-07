@@ -25,6 +25,12 @@ Reguli:
   pacientul NU sunt diagnostice: nu le pune aici. Nu pune un diagnostic dedus din medicamente.
 - "lab_results": analizele de laborator: "test" (numele analizei), "value", "unit",
   "reference_range" (intervalul de referință / valorile normale).
+- "allergies": alergiile pacientului scrise în document (ex. „alergic la penicilină”).
+- "observations": ALTE informații medicale scrise în document, care nu sunt medicamente, diagnostice
+  sau analize: semne vitale (tensiune, puls, temperatură, greutate, înălțime), simptome, proceduri,
+  recomandări, antecedente. Fiecare are "label" (ce este, ex. „Tensiune arterială”) și "value"
+  (valoarea sau textul, exact ca în document). NU pune aici nume, adrese, telefoane, CNP sau alte
+  date de identificare ale pacientului sau ale medicului.
 - Dacă documentul nu are o categorie (ex. o rețetă nu are analize), lasă lista goală [].
 
 DOCUMENT:

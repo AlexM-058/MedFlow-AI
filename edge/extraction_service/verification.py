@@ -12,7 +12,7 @@ tot elementul e eliminat: o doză fără medicament nu ajută pe nimeni.
 import re
 import unicodedata
 
-from schemas import LabResult, Medication, ModelExtraction
+from schemas import LabResult, Medication, ModelExtraction, Observation
 
 # Număr (cu virgulă sau punct) + unitate de măsură. (?![a-z]) = după unitate nu urmează
 # altă literă, ca „5 g” să fie doză, dar „5 gr...” nu.
@@ -47,6 +47,29 @@ def normalize(text: str) -> str:
 
 def looks_like_dose(value: str) -> bool:
     return DOSE_PATTERN.search(value) is not None
+
+
+# Datele de identificare NU sunt informații medicale și nu le extragem niciodată (confidențialitate, GDPR):
+# nici dacă modelul le-ar scoate, nici dacă apar în document. Se verifică pe eticheta normalizată și pe valoare.
+IDENTITY_LABEL_PREFIXES = (
+    "nume", "prenume", "pacient", "adres", "domiciliu", "telefon", "email", "cnp", "serie", "legitimatie",
+    "semnatur", "parafa", "localitate", "judet", "strada",
+)
+IDENTITY_LABELS_EXACT = {"medic", "medicul", "doctor", "doctorul", "dr", "medicprescriptor", "medictratant", "asigurat"}
+IDENTIFIER_VALUE = re.compile(
+    r"(?<!\d)[1-9]\d{12}(?!\d)"  # CNP: 13 cifre
+    r"|[\w.+-]+@[\w-]+\.[\w.-]+"  # email
+    r"|(?<![\d+])(?:\+40|0040|0)[\s.-]?[237](?:[\s.-]?\d){8}(?!\d)"  # telefon românesc
+    r"|\bRO\d{2}\s?[A-Z]{4}(?:\s?[A-Z0-9]){16}",  # IBAN românesc
+    re.IGNORECASE,
+)
+
+
+def looks_like_identity(label: str | None, value: str | None) -> bool:
+    key = normalize(label or "")
+    if key in IDENTITY_LABELS_EXACT or key.startswith(IDENTITY_LABEL_PREFIXES):
+        return True
+    return any(IDENTIFIER_VALUE.search(text) for text in (label, value) if text)
 
 
 def verify_extraction(
@@ -130,10 +153,38 @@ def verify_extraction(
             )
         )
 
+    # --- Alergii: textul trebuie să apară în document (regula 1), fără date de identificare ---
+    allergies: list[str] = []
+    for allergy in extraction.allergies:
+        kept = check(allergy, "Alergia")
+        if kept is not None and looks_like_identity(None, kept):
+            warnings.append("Alergia: o valoare care seamănă cu un identificator a fost scoasă.")
+            kept = None
+        if kept is not None:
+            allergies.append(kept)
+
+    # --- Alte informații medicale: și eticheta, și valoarea trebuie să apară în document ---
+    observations: list[Observation] = []
+    for item in extraction.observations:
+        label, value = clean(item.label), clean(item.value)
+        if label is None or value is None:
+            if label is not None or value is not None:
+                warnings.append(f"Observație eliminată: lipsește {'valoarea' if value is None else 'eticheta'} pentru «{label or value}».")
+            continue
+        if looks_like_identity(label, value):
+            warnings.append("Observație eliminată: pare o dată de identificare, care nu se extrage.")
+            continue
+        if not in_text(label) or not in_text(value):
+            warnings.append(f"Observație eliminată: «{label}: {value}» nu apare în document.")
+            continue
+        observations.append(Observation(label=label, value=value))
+
     verified = ModelExtraction(
         medications=remove_duplicates(medications),
         diagnoses=remove_duplicates(diagnoses),
         lab_results=remove_duplicates(lab_results),
+        allergies=remove_duplicates(allergies),
+        observations=remove_duplicates(observations),
     )
     return verified, remove_duplicates(warnings)
 

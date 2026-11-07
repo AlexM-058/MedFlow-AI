@@ -26,6 +26,14 @@ class LabResult(BaseModel):
     reference_range: str | None  # ex. "12 - 16"
 
 
+class Observation(BaseModel):
+    """O altă informație medicală din document: semn vital, simptom, procedură, recomandare, antecedent.
+    Nu medicament, diagnostic sau analiză (acelea au câmpurile lor) și NICIODATĂ date de identificare."""
+
+    label: str | None  # ex. "Tensiune arterială"
+    value: str | None  # ex. "130/80 mmHg"
+
+
 class DocumentDate(BaseModel):
     label: str | None  # ex. "Data recoltării"
     value: str | None  # ex. "14.03.2025"
@@ -33,12 +41,15 @@ class DocumentDate(BaseModel):
 
 class ModelExtraction(BaseModel):
     """Ce îi cerem lui MedGemma. Schema JSON a acestei clase e impusă modelului,
-    deci răspunsul lui are mereu toate cele 3 liste (eventual goale).
+    deci răspunsul lui are mereu listele cerute (eventual goale).
     Datele calendaristice NU i le cerem: le găsim cu reguli fixe (dates.py)."""
 
     medications: list[Medication]
     diagnoses: list[str]
     lab_results: list[LabResult]
+    # Au valoare implicită [] ca să rămână valid și un răspuns fără ele (versiuni mai vechi, teste).
+    allergies: list[str] = []
+    observations: list[Observation] = []
 
 
 class Source(BaseModel):
