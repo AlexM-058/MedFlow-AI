@@ -4,6 +4,13 @@ $ollama = Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama.exe'
 if (-not (Test-Path -LiteralPath $ollama)) { throw 'Install Ollama first.' }
 if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot '.env'))) { throw 'Missing AI/local/.env.' }
 
+# Settings the extraction service reads from AI/local/.env (model and OCR differ per machine: a PC with a GPU can use
+# medgemma1.5:4b and EasyOCR, a laptop without one stays on gemma3:1b and Tesseract). Defaults = the laptop setup.
+function Get-LocalSetting([string]$Name, [string]$Default) {
+  $line = Get-Content -LiteralPath (Join-Path $PSScriptRoot '.env') | Where-Object { $_ -match "^$Name=\S" } | Select-Object -First 1
+  if ($line) { return ($line -replace "^$Name=", '').Trim() }
+  return $Default
+}
 function Is-ServiceReady([string]$Address) {
   try { $null = Invoke-RestMethod -Uri $Address -TimeoutSec 3; return $true } catch { return $false }
 }
@@ -20,7 +27,11 @@ if (-not (Is-ServiceReady 'http://127.0.0.1:8090/health')) {
   $extraction = Join-Path $PSScriptRoot '..\edge\extraction_service'
   $python = Join-Path $extraction '.venv\Scripts\python.exe'
   if (Test-Path -LiteralPath $python) {
-    $env:EDGE_LLM_MEDGEMMA = 'gemma3:1b'; $env:OCR_ENGINE = 'tesseract'; $env:OCR_FALLBACK = 'off'; $env:PYTHONUTF8 = '1'
+    $env:EDGE_LLM_MEDGEMMA = Get-LocalSetting 'EDGE_LLM_MEDGEMMA' 'gemma3:1b'
+    $env:OCR_ENGINE = Get-LocalSetting 'OCR_ENGINE' 'tesseract'
+    $env:OCR_FALLBACK = Get-LocalSetting 'OCR_FALLBACK' 'off'
+    $env:EASYOCR_GPU = Get-LocalSetting 'EASYOCR_GPU' 'true'
+    $env:PYTHONUTF8 = '1'
     # Datele de limbă Tesseract (eng, osd, ron) din folderul utilizatorului; instalerul silențios aduce doar eng.
     $tessdata = Join-Path $env:USERPROFILE 'tessdata'
     if (Test-Path -LiteralPath (Join-Path $tessdata 'ron.traineddata')) { $env:TESSDATA_PREFIX = $tessdata }
